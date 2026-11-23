@@ -1,0 +1,6 @@
+{
+  "name": "AdegaTrace - Trazabilidad y Gestión de Bodega",
+  "description": "Control integral de trazabilidad vitivinícola: entradas de uva, elaboración, embotellado, almacén de graneles, insumos, salidas y libros de registro oficiales en PDF y Excel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
