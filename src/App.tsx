@@ -49,6 +49,7 @@ const AppContent: React.FC = () => {
   const [openElabModal, setOpenElabModal] = useState(false);
   const [openEmbModal, setOpenEmbModal] = useState(false);
   const [openSalidaModal, setOpenSalidaModal] = useState(false);
+  const [isAlertsCollapsed, setIsAlertsCollapsed] = useState(false);
 
   // Navigation handlers
   const handleNavigateToTraceabilityLote = (lote: string) => {
@@ -94,6 +95,8 @@ const AppContent: React.FC = () => {
       {/* Top Navbar */}
       <Navbar
         activeTab={activeTab}
+        isAlertsCollapsed={isAlertsCollapsed}
+        onToggleAlerts={() => setIsAlertsCollapsed((prev) => !prev)}
         onBackHome={() => {
           setActiveTab('dashboard');
           window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -232,6 +235,8 @@ const AppContent: React.FC = () => {
 
       {/* Floating 3-week official deadline reminder */}
       <OfficialDeadlinesToast
+        isCollapsed={isAlertsCollapsed}
+        onSetCollapsed={setIsAlertsCollapsed}
         onOpenFogga={(campanaInicio) => {
           setTargetFoggaCampana(campanaInicio);
           setActiveTab('fogga_mr441b');
