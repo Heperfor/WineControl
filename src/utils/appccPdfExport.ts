@@ -89,14 +89,22 @@ export const exportAppccManualSanidadPDF = (payload: AppccPdfPayload) => {
   };
 
   // Helper: find bottle & cork lot from insumos
-  const findLoteInsumo = (tipo: 'botellas' | 'corchos', embLote: string) => {
-    const entry = payload.insumosMovimientos.find(
-      (m) => m.tipoInsumo === tipo && m.movimiento === 'entrada' && m.loteProveedor
-    );
+  const findLoteInsumo = (tipo: 'botellas' | 'corchos', embLote: string, embFecha?: string) => {
     const out = payload.insumosMovimientos.find(
       (m) => m.tipoInsumo === tipo && m.embotelladoLoteAsociado === embLote && m.loteProveedor
     );
-    return out?.loteProveedor || entry?.loteProveedor || '-';
+    if (out?.loteProveedor) return out.loteProveedor;
+
+    const entries = payload.insumosMovimientos
+      .filter((m) => m.tipoInsumo === tipo && m.movimiento === 'entrada' && m.loteProveedor)
+      .sort((a, b) => b.fecha.localeCompare(a.fecha));
+
+    if (embFecha) {
+      const priorEntry = entries.find((m) => m.fecha <= embFecha);
+      if (priorEntry?.loteProveedor) return priorEntry.loteProveedor;
+    }
+
+    return entries[0]?.loteProveedor || '-';
   };
 
   // 1. REGISTRO ENTRADA DE UVA
@@ -187,8 +195,8 @@ export const exportAppccManualSanidadPDF = (payload: AppccPdfPayload) => {
             emb.marca,
             `${emb.cantidadLitros} L / ${emb.cantidadBotellas075} bot`,
             emb.lote,
-            findLoteInsumo('botellas', emb.lote),
-            findLoteInsumo('corchos', emb.lote),
+            findLoteInsumo('botellas', emb.lote, emb.fecha),
+            findLoteInsumo('corchos', emb.lote, emb.fecha),
             emb.insumos.lacre ? `Lacre ${emb.insumos.colorLacre || 'OK'}` : '-',
           ])
         : [['-', '-', '-', '-', 'Sin embotellados registrados', '-', '-', '-']],
@@ -287,11 +295,12 @@ export const exportAppccManualSanidadPDF = (payload: AppccPdfPayload) => {
   const matrixRows = APPCC_LD_FILAS_BASE.map((fila) => {
     const cells = dayHeaders.map((dayStr) => {
       const fecha = `${payload.mesReferencia}-${dayStr.padStart(2, '0')}`;
-      const match = payload.limpieza.find(
+      const matches = payload.limpieza.filter(
         (l) => l.fecha === fecha && l.zonaEquipo.toUpperCase() === fila.zona.toUpperCase()
       );
-      if (!match) return '';
-      return match.conforme ? 'OK' : 'INC';
+      if (matches.length === 0) return '';
+      const hasIncidence = matches.some((l) => !l.conforme);
+      return hasIncidence ? 'INC' : 'OK';
     });
     return [fila.categoria, fila.zona, ...cells];
   });
@@ -389,30 +398,38 @@ export const exportAppccManualSanidadPDF = (payload: AppccPdfPayload) => {
   });
 
   const yAfterPcc = (doc as any).lastAutoTable.finalY + 6;
-  if (yAfterPcc < 160) {
-    autoTable(doc, {
-      startY: yAfterPcc,
-      head: [['Elaboración Tinto (Fases)', 'Elaboración Blanco (Fases)']],
-      body: Array.from(
-        { length: Math.max(FLUJO_VINO_TINTO_APPCC.length, FLUJO_VINO_BLANCO_APPCC.length) },
-        (_, i) => [
-          FLUJO_VINO_TINTO_APPCC[i]
-            ? `${i + 1}. ${FLUJO_VINO_TINTO_APPCC[i].titulo}${
-                FLUJO_VINO_TINTO_APPCC[i].adicionSO2 ? ` [${FLUJO_VINO_TINTO_APPCC[i].adicionSO2}]` : ''
-              }`
-            : '',
-          FLUJO_VINO_BLANCO_APPCC[i]
-            ? `${i + 1}. ${FLUJO_VINO_BLANCO_APPCC[i].titulo}${
-                FLUJO_VINO_BLANCO_APPCC[i].adicionSO2 ? ` [${FLUJO_VINO_BLANCO_APPCC[i].adicionSO2}]` : ''
-              }`
-            : '',
-        ]
-      ),
-      theme: 'grid',
-      headStyles: { fillColor: [68, 64, 60], textColor: 255, fontSize: 7.5 },
-      styles: { fontSize: 6.8, cellPadding: 1.5 },
-    });
+  let flowStartY = yAfterPcc;
+  if (yAfterPcc >= 150) {
+    doc.addPage('a4', 'landscape');
+    drawHeader(
+      'ANEXO PLAN APPCC · DIAGRAMAS DE FLUJO (ELABORACIÓN TINTO Y BLANCO)',
+      'Incluye SO₂ en despalillado/estrujado, fin FML y pre-embotellado; salida de raspón y bagazo a compostaje; sin ácido ascórbico'
+    );
+    flowStartY = 30;
   }
+
+  autoTable(doc, {
+    startY: flowStartY,
+    head: [['Elaboración Tinto (Fases)', 'Elaboración Blanco (Fases)']],
+    body: Array.from(
+      { length: Math.max(FLUJO_VINO_TINTO_APPCC.length, FLUJO_VINO_BLANCO_APPCC.length) },
+      (_, i) => [
+        FLUJO_VINO_TINTO_APPCC[i]
+          ? `${i + 1}. ${FLUJO_VINO_TINTO_APPCC[i].titulo}${
+              FLUJO_VINO_TINTO_APPCC[i].adicionSO2 ? ` [${FLUJO_VINO_TINTO_APPCC[i].adicionSO2}]` : ''
+            }`
+          : '',
+        FLUJO_VINO_BLANCO_APPCC[i]
+          ? `${i + 1}. ${FLUJO_VINO_BLANCO_APPCC[i].titulo}${
+              FLUJO_VINO_BLANCO_APPCC[i].adicionSO2 ? ` [${FLUJO_VINO_BLANCO_APPCC[i].adicionSO2}]` : ''
+            }`
+          : '',
+      ]
+    ),
+    theme: 'grid',
+    headStyles: { fillColor: [68, 64, 60], textColor: 255, fontSize: 7.5 },
+    styles: { fontSize: 6.8, cellPadding: 1.5 },
+  });
 
   // Footer page numbering
   const pageCount = (doc as any).internal.getNumberOfPages();

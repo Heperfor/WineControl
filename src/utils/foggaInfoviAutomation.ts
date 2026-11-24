@@ -31,6 +31,7 @@ import {
   isRedVariety,
   resolveEmbotelladoTipoVino,
 } from './wineType';
+import { getLocalIsoDate } from './dateUtils';
 
 export const FOGGA_CATEGORIAS: Array<{ key: FoggaCategoriaVinoKey; label: string }> = [
   { key: 'dop', label: 'Viño con denominación de orixe protexida' },
@@ -59,7 +60,7 @@ export const getCampaignFromDate = (
 };
 
 export const getCurrentCampaign = (refDate = new Date()) => {
-  const iso = refDate.toISOString().slice(0, 10);
+  const iso = getLocalIsoDate(refDate);
   return getCampaignFromDate(iso);
 };
 
@@ -122,42 +123,44 @@ const defaultFoggaDeclaranteFromLatest = (
       declarante: {
         ...latest.declarante,
         nif: config.cifNif?.trim() || latest.declarante.nif,
+        nomeVia: config.direccion?.trim() || latest.declarante.nomeVia,
         provincia: config.provincia?.trim() || latest.declarante.provincia,
         concello: config.localidad?.trim() || latest.declarante.concello,
+        localidade: config.localidad?.trim() || latest.declarante.localidade,
       },
       codev: latest.codev || '3207009609',
-      vinedoSitoEn: latest.vinedoSitoEn || 'Carballeda de Avia, Cenlle e Ribadavia',
-      concellos: latest.concellos || 'Carballeda de Avia, Cenlle e Ribadavia',
-      xefaturaTerritorial: latest.xefaturaTerritorial || config.provincia || 'Ourense',
+      vinedoSitoEn: latest.vinedoSitoEn || config.localidad?.trim() || '',
+      concellos: latest.concellos || config.localidad?.trim() || '',
+      xefaturaTerritorial: config.provincia?.trim() || latest.xefaturaTerritorial || '',
     };
   }
 
   return {
     declarante: {
-      nome: config.responsableTecnico || config.nombreBodega || 'HECTOR',
-      primeiroApelido: 'PEREZ',
-      segundoApelido: 'FORMOSO',
-      nif: config.cifNif || '76721750Y',
+      nome: config.responsableTecnico?.trim() || config.nombreBodega?.trim() || '',
+      primeiroApelido: '',
+      segundoApelido: '',
+      nif: config.cifNif?.trim() || '',
       tipoVia: 'ESTRADA',
-      nomeVia: config.direccion || 'NACIONAL VELLA',
-      numero: '69',
+      nomeVia: config.direccion?.trim() || '',
+      numero: '',
       bloq: '',
-      andar: 'Baixo',
+      andar: '',
       porta: '',
-      parroquia: 'Ventosela',
-      lugar: 'San Paio',
-      codigoPostal: '32418',
-      provincia: config.provincia || 'Ourense',
-      concello: config.localidad || 'Ribadavia',
-      localidade: config.localidad || 'Ribadavia',
+      parroquia: '',
+      lugar: '',
+      codigoPostal: '',
+      provincia: config.provincia?.trim() || '',
+      concello: config.localidad?.trim() || '',
+      localidade: config.localidad?.trim() || '',
       telefono: '',
-      telefonoMobil: '+34647904842',
-      correoElectronico: 'microparaxes@microparaxes.com',
+      telefonoMobil: '',
+      correoElectronico: '',
     },
-    codev: '3207009609',
-    vinedoSitoEn: 'Carballeda de Avia, Cenlle e Ribadavia',
-    concellos: 'Carballeda de Avia, Cenlle e Ribadavia',
-    xefaturaTerritorial: config.provincia || 'Ourense',
+    codev: '',
+    vinedoSitoEn: config.localidad?.trim() || '',
+    concellos: config.localidad?.trim() || '',
+    xefaturaTerritorial: config.provincia?.trim() || '',
   };
 };
 
@@ -242,7 +245,7 @@ export const generateFoggaDraftFromVendimia = (
     superficieHa: superficieUsadaHa,
     tinta100Kg: tinta100,
     branca100Kg: branca100,
-    rendemento: 0,
+    rendemento: superficieUsadaHa > 0 ? round2((tinta100 + branca100) / superficieUsadaHa) : 0,
   };
 
   const cadroB: FoggaMr441bDeclaracion['cadroB'] = {
@@ -756,21 +759,37 @@ export const generateInfoviDraftFromWinery = (
     paisesTerceros: salTerRow,
   };
 
-  const latestOperador =
-    [...params.existingInfovi].sort((a, b) => b.campanaInicio - a.campanaInicio)[0]?.operador || {
-      cifNif: params.bodegaConfig.cifNif || '76721750Y',
-      nombreOperador: 'HÉCTOR PÉREZ FORMOSO',
-      telefono: '647904842',
-      ria: '',
-      email: 'HEKTORPF@GMAIL.COM',
-      domicilioBodega: 'CTRA. NACIONAL VELLA, 69 - SAN PAIO',
-      domicilioProductor: 'CTRA. NACIONAL VELLA, 24 - 1ºA',
-      poblacion: (params.bodegaConfig.localidad || 'RIBADAVIA').toUpperCase(),
-      provincia: (params.bodegaConfig.provincia || 'OURENSE').toUpperCase(),
-      reovi: '17128',
-      nidpb: '3200690397',
-      tipoOperador: 'PRODUCTOR',
-    };
+  const baseOperador = [...params.existingInfovi].sort(
+    (a, b) => b.campanaInicio - a.campanaInicio
+  )[0]?.operador;
+  const latestOperador = {
+    cifNif: params.bodegaConfig.cifNif?.trim() || baseOperador?.cifNif || '',
+    nombreOperador:
+      params.bodegaConfig.responsableTecnico?.trim() ||
+      params.bodegaConfig.nombreBodega?.trim() ||
+      baseOperador?.nombreOperador ||
+      '',
+    telefono: baseOperador?.telefono || '',
+    ria: baseOperador?.ria || '',
+    email: baseOperador?.email || '',
+    domicilioBodega:
+      params.bodegaConfig.direccion?.trim() || baseOperador?.domicilioBodega || '',
+    domicilioProductor:
+      baseOperador?.domicilioProductor || params.bodegaConfig.direccion?.trim() || '',
+    poblacion: (
+      params.bodegaConfig.localidad?.trim() ||
+      baseOperador?.poblacion ||
+      ''
+    ).toUpperCase(),
+    provincia: (
+      params.bodegaConfig.provincia?.trim() ||
+      baseOperador?.provincia ||
+      ''
+    ).toUpperCase(),
+    reovi: baseOperador?.reovi || '',
+    nidpb: baseOperador?.nidpb || '',
+    tipoOperador: baseOperador?.tipoOperador || 'PRODUCTOR',
+  };
 
   const existingSame = params.existingInfovi.find(
     (d) => d.campanaInicio === campanaInicio && d.mes === mes
@@ -789,7 +808,7 @@ export const generateInfoviDraftFromWinery = (
     cerradoPor: existingSame?.cerradoPor || '',
     fechaUltGrabacion: existingSame?.fechaUltGrabacion,
     fechaRecepcion: existingSame?.fechaRecepcion,
-    fechaImpresion: new Date().toISOString().slice(0, 10),
+    fechaImpresion: getLocalIsoDate(),
     entradaUvaKg: {
       tinta: Math.round(kgTinta),
       blanca: Math.round(kgBlanca),
@@ -879,7 +898,7 @@ export const getPendingOfficialDeadlines = (
   infoviDeclaraciones: InfoviDeclaracion[],
   now = new Date()
 ): OfficialDeadlineAlert[] => {
-  const todayIso = now.toISOString().slice(0, 10);
+  const todayIso = getLocalIsoDate(now);
   const currentCamp = getCurrentCampaign(now);
   const candidateYears = [currentCamp.inicio - 1, currentCamp.inicio, currentCamp.inicio + 1];
   const alerts: OfficialDeadlineAlert[] = [];

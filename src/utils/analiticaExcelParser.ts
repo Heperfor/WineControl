@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { Deposito, ParametroAnalitica } from '../types/winery';
+import { getLocalIsoDate } from './dateUtils';
 
 export interface ParsedAnaliticaRow {
   fecha: string;
@@ -149,7 +150,7 @@ export const parseAnaliticaExcelBuffer = (
 
   const headerRow = nonEmptyRows[headerIdx];
   const dataRows = nonEmptyRows.slice(headerIdx + 1);
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = getLocalIsoDate();
   const fileDate = extractDateFromFilename(fileName);
 
   // Check if the sheet is transposed (2 columns, >= 4 rows, Col A = labels, Col B = numeric values)

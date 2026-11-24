@@ -10,6 +10,22 @@ import {
   EntradaUva,
   MovimientoInsumo,
 } from '../types/winery';
+import { getLocalIsoDate } from './dateUtils';
+
+const isWoodOrAmphoraZone = (zona: string, tipoRecipiente?: string): boolean => {
+  const upper = zona.trim().toUpperCase();
+  if (tipoRecipiente && (tipoRecipiente.includes('Barrica') || tipoRecipiente === 'Ánfora')) {
+    return true;
+  }
+  return (
+    upper === 'B1' ||
+    upper === 'B2' ||
+    upper.startsWith('B3') ||
+    upper.includes('BARRICA') ||
+    upper.includes('ÁNFORA') ||
+    upper.includes('ANFORA')
+  );
+};
 
 export interface MatrizLdFilaDef {
   categoria: CategoriaLimpiezaAppcc;
@@ -116,11 +132,7 @@ export const buildLimpiezaForEntradaUva = (
   const depZona = mapDepositoIdToZonaLd(entrada.depositoDestinoId);
   const nowIso = new Date().toISOString();
   const baseTag = `Vendimia ${entrada.parcelaNombre} (${entrada.kgTotales} kg) → Dep. ${entrada.depositoDestinoId}`;
-  const esMaderaOAnfora =
-    depZona.startsWith('B') ||
-    depZona.toUpperCase().includes('ÁNFORA') ||
-    entrada.tipoRecipiente.includes('Barrica') ||
-    entrada.tipoRecipiente === 'Ánfora';
+  const esMaderaOAnfora = isWoodOrAmphoraZone(depZona, entrada.tipoRecipiente);
 
   const items: Array<{ zona: string; categoria: CategoriaLimpiezaAppcc; producto: string; obs: string }> = [
     {
@@ -221,7 +233,7 @@ export const buildLimpiezaForElaboracion = (
   const items: Array<{ zona: string; categoria: CategoriaLimpiezaAppcc; producto: string; obs: string }> = [];
 
   if (esTrasiegoOMovimiento) {
-    const isOrigenBarrica = origenZona.startsWith('B');
+    const isOrigenBarrica = isWoodOrAmphoraZone(origenZona);
     items.push({
       zona: origenZona,
       categoria: 'DEPOSITOS',
@@ -233,7 +245,7 @@ export const buildLimpiezaForElaboracion = (
 
     if (elab.destinoTipo === 'deposito' && elab.depositoDestinoId && elab.depositoDestinoId !== elab.depositoOrigenId) {
       const destZona = mapDepositoIdToZonaLd(elab.depositoDestinoId);
-      const isDestBarrica = destZona.startsWith('B');
+      const isDestBarrica = isWoodOrAmphoraZone(destZona);
       items.push({
         zona: destZona,
         categoria: 'DEPOSITOS',
@@ -419,7 +431,7 @@ export const generateBackfillAguaUntilToday = (params: {
   responsable: string;
 }): AppccAguaRegistro[] => {
   const { existingAgua, startYearMonth = '2025-01', responsable } = params;
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = getLocalIsoDate();
   const currentYm = todayStr.slice(0, 7);
   const currentDay = Number(todayStr.slice(8, 10));
 
@@ -474,7 +486,7 @@ export const generateScheduledAppccForMonth = (params: {
   } = params;
 
   const nowIso = new Date().toISOString();
-  const todayStr = nowIso.slice(0, 10);
+  const todayStr = getLocalIsoDate();
   const daysInMonth = getDaysInMonth(year, month);
   const ym = `${year}-${pad2(month)}`;
 

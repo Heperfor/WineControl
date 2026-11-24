@@ -11,6 +11,7 @@ import {
   SalidaRegistro,
 } from '../types/winery';
 import { inferTipoVinoFromVarieties } from './wineType';
+import { getLocalIsoDate } from './dateUtils';
 
 interface ExportContextData {
   config: BodegaConfig;
@@ -32,7 +33,7 @@ export const exportWineryRegistryToExcel = (data: ExportContextData, filename?: 
   const entradasRows = data.entradas.map((e, index) => {
     const parcel = data.parcelas.find((p) => p.id === e.parcelaId);
     const desgloseStr = e.desgloseVariedades.map((v) => `${v.variedad}: ${v.kg} kg`).join(', ');
-    const litros = e.litrosMosto || (e as any).litrosEstimadosMosto || 0;
+    const litros = e.litrosMosto || e.litrosEstimadosMosto || 0;
     const rendimiento = e.rendimientoRealPorcentaje || (e.kgTotales > 0 ? Number(((litros / e.kgTotales) * 100).toFixed(1)) : 0);
 
     return {
@@ -129,7 +130,7 @@ export const exportWineryRegistryToExcel = (data: ExportContextData, filename?: 
       Tipo: d.tipoRecipiente,
       'Capacidad (L)': d.capacidadLitros,
       'Litros Actuales (L)': d.litrosActuales,
-      '% Ocupación': `${Math.round((d.litrosActuales / d.capacidadLitros) * 100)}%`,
+      '% Ocupación': `${d.capacidadLitros > 0 ? Math.round((d.litrosActuales / d.capacidadLitros) * 100) : 0}%`,
       Estado: d.estado,
       'Vino / Partida': d.vinoNombre || '-',
       'Variedades a Granel': varBreakdown || 'Vacío',
@@ -143,7 +144,7 @@ export const exportWineryRegistryToExcel = (data: ExportContextData, filename?: 
   // Sheet 6: Parcelas y Viñedos
   const parcelasRows = data.parcelas.map((p) => {
     const vars = p.variedadesPlantadas.map((v) => `${v.variedad} (${v.porcentajeEstimado}%)`).join(', ');
-    const supM2 = p.superficieM2 || ((p as any).superficieHa ? (p as any).superficieHa * 10000 : 0);
+    const supM2 = p.superficieM2 || (p.superficieHa ? p.superficieHa * 10000 : 0);
 
     return {
       Código: p.id,
@@ -163,7 +164,7 @@ export const exportWineryRegistryToExcel = (data: ExportContextData, filename?: 
   XLSX.utils.book_append_sheet(wb, wsParcelas, '6. Parcelas y Variedades');
 
   // Write file
-  const actualFilename = filename || `Libro_Registro_Bodega_${data.config.anoCampana}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  const actualFilename = filename || `Libro_Registro_Bodega_${data.config.anoCampana}_${getLocalIsoDate()}.xlsx`;
   XLSX.writeFile(wb, actualFilename);
 };
 
@@ -233,11 +234,14 @@ export const exportOfficialRegistryPDF = (
     }
   };
 
+  let hasSection = false;
+
   if (reportType === 'entradas' || reportType === 'completo') {
+    hasSection = true;
     addHeader('LIBRO DE ENTRADAS DE UVA', 'Registro de pesajes y rendimientos obtenidos');
 
     const bodyData = data.entradas.map((e) => {
-      const litros = e.litrosMosto || (e as any).litrosEstimadosMosto || 0;
+      const litros = e.litrosMosto || e.litrosEstimadosMosto || 0;
       const rendimiento = e.rendimientoRealPorcentaje || (e.kgTotales > 0 ? Number(((litros / e.kgTotales) * 100).toFixed(1)) : 0);
 
       return [
@@ -286,7 +290,9 @@ export const exportOfficialRegistryPDF = (
     });
   }
 
-  if (reportType === 'elaboraciones') {
+  if (reportType === 'elaboraciones' || reportType === 'completo') {
+    if (hasSection) doc.addPage('a4', 'landscape');
+    hasSection = true;
     addHeader('LIBRO DE ELABORACIÓN Y PRÁCTICAS ENOLÓGICAS', 'Control de operaciones, trasiegos, sulfitado y correcciones');
 
     const bodyData = data.elaboraciones.map((el) => {
@@ -337,7 +343,9 @@ export const exportOfficialRegistryPDF = (
     });
   }
 
-  if (reportType === 'embotellados') {
+  if (reportType === 'embotellados' || reportType === 'completo') {
+    if (hasSection) doc.addPage('a4', 'landscape');
+    hasSection = true;
     addHeader('LIBRO DE EMBOTELLADOS Y DECLARACIÓN DE LOTES', 'Trazabilidad de envasado, volúmenes e insumos utilizados');
 
     const bodyData = data.embotellados.map((emb) => [
@@ -388,7 +396,9 @@ export const exportOfficialRegistryPDF = (
     });
   }
 
-  if (reportType === 'salidas') {
+  if (reportType === 'salidas' || reportType === 'completo') {
+    if (hasSection) doc.addPage('a4', 'landscape');
+    hasSection = true;
     addHeader('LIBRO DE SALIDAS Y CIRCULACIÓN DE VINOS', 'Documentación de expedición y entrega a clientes / distribuidores');
 
     const bodyData = data.salidas.map((s) => [
@@ -511,7 +521,7 @@ export const exportLotAuditDossierPDF = (
 
   const grapeBody = entradasRelacionadas.map((e) => {
     const parcel = data.parcelas.find((p) => p.id === e.parcelaId);
-    const litros = e.litrosMosto || (e as any).litrosEstimadosMosto || 0;
+    const litros = e.litrosMosto || e.litrosEstimadosMosto || 0;
     const rend = e.rendimientoRealPorcentaje || (e.kgTotales > 0 ? Number(((litros / e.kgTotales) * 100).toFixed(1)) : 0);
 
     return [

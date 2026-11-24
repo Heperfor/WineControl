@@ -14,6 +14,10 @@ import {
   MedioRuralProcesoElaboracionRegistro,
   MedioRuralSalidaRegistro,
 } from '../types/winery';
+import { getLocalIsoDate } from './dateUtils';
+
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+const round3 = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;
 
 const formatFechaEs = (isoDate: string) => {
   if (!isoDate) return '';
@@ -206,7 +210,7 @@ export const exportMedioRuralL1Excel = (
 
   XLSX.utils.book_append_sheet(wb, entSheet, 'Pág 1 - Entradas');
   XLSX.utils.book_append_sheet(wb, salSheet, 'Pág 2 - Saídas');
-  XLSX.writeFile(wb, `MedioRural_Libro1_Entradas_Saidas_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(wb, `MedioRural_Libro1_Entradas_Saidas_${getLocalIsoDate()}.xlsx`);
 };
 
 export const exportMedioRuralL1PDF = (
@@ -344,7 +348,7 @@ export const exportMedioRuralL1PDF = (
     styles: { fontSize: 6.5, cellPadding: 1.4 },
   });
 
-  doc.save(`MedioRural_Libro1_Entradas_Saidas_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`MedioRural_Libro1_Entradas_Saidas_${getLocalIsoDate()}.pdf`);
 };
 
 // ============================================================================
@@ -394,7 +398,7 @@ export const exportMedioRuralL2Excel = (
 
   XLSX.utils.book_append_sheet(wb, entSheet, 'Pág 1 - Entradas');
   XLSX.utils.book_append_sheet(wb, salSheet, 'Pág 2 - Saídas');
-  XLSX.writeFile(wb, `MedioRural_Libro2_Embotellados_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(wb, `MedioRural_Libro2_Embotellados_${getLocalIsoDate()}.xlsx`);
 };
 
 export const exportMedioRuralL2PDF = (
@@ -476,7 +480,7 @@ export const exportMedioRuralL2PDF = (
     styles: { fontSize: 7, cellPadding: 1.6 },
   });
 
-  doc.save(`MedioRural_Libro2_Embotellados_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`MedioRural_Libro2_Embotellados_${getLocalIsoDate()}.pdf`);
 };
 
 // ============================================================================
@@ -556,10 +560,32 @@ export const exportMedioRuralL3Excel = (
       r.outrosEntradaLitroKg ?? '',
       r.outrosSaidaLitroKg ?? '',
     ]),
+    [
+      'SUMA E SEGUE',
+      '',
+      '',
+      '',
+      '',
+      '',
+      round3((sumaAnt.acidoTartaricoEntradaKg || 0) + rows.reduce((s, r) => s + (r.acidoTartaricoEntradaKg || 0), 0)),
+      round3((sumaAnt.acidoTartaricoSaidaKg || 0) + rows.reduce((s, r) => s + (r.acidoTartaricoSaidaKg || 0), 0)),
+      '',
+      round2((sumaAnt.mostoConcEntradaLitros || 0) + rows.reduce((s, r) => s + (r.mostoConcEntradaLitros || 0), 0)),
+      round2((sumaAnt.mostoConcSaidaLitros || 0) + rows.reduce((s, r) => s + (r.mostoConcSaidaLitros || 0), 0)),
+      '',
+      round2((sumaAnt.alcoholEntradaLitros || 0) + rows.reduce((s, r) => s + (r.alcoholEntradaLitros || 0), 0)),
+      round2((sumaAnt.alcoholSaidaLitros || 0) + rows.reduce((s, r) => s + (r.alcoholSaidaLitros || 0), 0)),
+      round3((sumaAnt.sacarosaEntradaKg || 0) + rows.reduce((s, r) => s + (r.sacarosaEntradaKg || 0), 0)),
+      round3((sumaAnt.sacarosaSaidaKg || 0) + rows.reduce((s, r) => s + (r.sacarosaSaidaKg || 0), 0)),
+      '',
+      '',
+      round3((sumaAnt.outrosEntradaLitroKg || 0) + rows.reduce((s, r) => s + (r.outrosEntradaLitroKg || 0), 0)),
+      round3((sumaAnt.outrosSaidaLitroKg || 0) + rows.reduce((s, r) => s + (r.outrosSaidaLitroKg || 0), 0)),
+    ],
   ]);
 
   XLSX.utils.book_append_sheet(wb, ws, 'Mov. Produtos Enol.');
-  XLSX.writeFile(wb, `MedioRural_Libro3_Mov_Produtos_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(wb, `MedioRural_Libro3_Mov_Produtos_${getLocalIsoDate()}.xlsx`);
 };
 
 export const exportMedioRuralL3PDF = (
@@ -645,7 +671,7 @@ export const exportMedioRuralL3PDF = (
     styles: { fontSize: 6, cellPadding: 1.3 },
   });
 
-  doc.save(`MedioRural_Libro3_Mov_Produtos_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`MedioRural_Libro3_Mov_Produtos_${getLocalIsoDate()}.pdf`);
 };
 
 // ============================================================================
@@ -708,9 +734,34 @@ export const exportMedioRuralL4Excel = (
       r.finalAcidezGl ?? '',
       r.observacions,
     ]),
+    [
+      'SUMA E SEGUE',
+      '',
+      '',
+      round2(rows.reduce((s, r) => s + (r.partidaLitrosUtilizados || 0), 0)),
+      '',
+      '',
+      '',
+      '',
+      '',
+      round3(rows.reduce((s, r) => s + (r.sulfitadoCantidadeKg || 0), 0)),
+      '',
+      '',
+      round3(rows.reduce((s, r) => s + (r.acidCantidadeKg || 0), 0)),
+      '',
+      '',
+      '',
+      '',
+      '',
+      round2(rows.reduce((s, r) => s + (r.finalLitrosObtidos || 0), 0)),
+      '',
+      '',
+      '',
+      '',
+    ],
   ]);
   XLSX.utils.book_append_sheet(wb, ws, 'Prácticas Enolóxicas');
-  XLSX.writeFile(wb, `MedioRural_Libro4_Practicas_Enoloxicas_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(wb, `MedioRural_Libro4_Practicas_Enoloxicas_${getLocalIsoDate()}.xlsx`);
 };
 
 export const exportMedioRuralL4PDF = (
@@ -792,7 +843,7 @@ export const exportMedioRuralL4PDF = (
     styles: { fontSize: 6, cellPadding: 1.3 },
   });
 
-  doc.save(`MedioRural_Libro4_Practicas_Enoloxicas_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`MedioRural_Libro4_Practicas_Enoloxicas_${getLocalIsoDate()}.pdf`);
 };
 
 // ============================================================================
@@ -841,9 +892,27 @@ export const exportMedioRuralL5Excel = (
       r.finalGradTotal ?? '',
       r.observacions,
     ]),
+    [
+      'SUMA E SEGUE',
+      '',
+      '',
+      '',
+      '',
+      round2(rows.reduce((s, r) => s + (r.partidaLitrosUtilizados || 0), 0)),
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      round2(rows.reduce((s, r) => s + (r.finalLitrosObtidos || 0), 0)),
+      '',
+      '',
+      '',
+    ],
   ]);
   XLSX.utils.book_append_sheet(wb, ws, 'Procesos Elaboración');
-  XLSX.writeFile(wb, `MedioRural_Libro5_Procesos_Elaboracion_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(wb, `MedioRural_Libro5_Procesos_Elaboracion_${getLocalIsoDate()}.xlsx`);
 };
 
 export const exportMedioRuralL5PDF = (
@@ -919,5 +988,5 @@ export const exportMedioRuralL5PDF = (
     styles: { fontSize: 6.5, cellPadding: 1.4 },
   });
 
-  doc.save(`MedioRural_Libro5_Procesos_Elaboracion_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`MedioRural_Libro5_Procesos_Elaboracion_${getLocalIsoDate()}.pdf`);
 };

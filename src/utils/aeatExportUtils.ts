@@ -7,6 +7,9 @@ import {
   AeatProductoElaboradoRegistro,
   BodegaConfig,
 } from '../types/winery';
+import { getLocalIsoDate } from './dateUtils';
+
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 const formatFechaEs = (isoDate: string) => {
   if (!isoDate) return '';
@@ -103,15 +106,15 @@ export const exportAeatMateriasPrimasExcel = (
     '',
     '',
     '',
-    (sumaAnterior.entradasUvasKg || 0) + sumField((r) => r.entradasUvasKg),
-    (sumaAnterior.entradasBagazosKg || 0) + sumField((r) => r.entradasBagazosKg),
-    (sumaAnterior.entradasMostoLitros || 0) + sumField((r) => r.entradasMostoLitros),
-    (sumaAnterior.salidasUvasKg || 0) + sumField((r) => r.salidasUvasKg),
-    (sumaAnterior.salidasBagazosKg || 0) + sumField((r) => r.salidasBagazosKg),
-    (sumaAnterior.salidasMostoLitros || 0) + sumField((r) => r.salidasMostoLitros),
-    (sumaAnterior.existenciasUvasKg || 0) + sumField((r) => r.existenciasUvasKg),
-    (sumaAnterior.existenciasBagazosKg || 0) + sumField((r) => r.existenciasBagazosKg),
-    (sumaAnterior.existenciasMostoLitros || 0) + sumField((r) => r.existenciasMostoLitros),
+    round2((sumaAnterior.entradasUvasKg || 0) + sumField((r) => r.entradasUvasKg)),
+    round2((sumaAnterior.entradasBagazosKg || 0) + sumField((r) => r.entradasBagazosKg)),
+    round2((sumaAnterior.entradasMostoLitros || 0) + sumField((r) => r.entradasMostoLitros)),
+    round2((sumaAnterior.salidasUvasKg || 0) + sumField((r) => r.salidasUvasKg)),
+    round2((sumaAnterior.salidasBagazosKg || 0) + sumField((r) => r.salidasBagazosKg)),
+    round2((sumaAnterior.salidasMostoLitros || 0) + sumField((r) => r.salidasMostoLitros)),
+    round2((sumaAnterior.existenciasUvasKg || 0) + sumField((r) => r.existenciasUvasKg)),
+    round2((sumaAnterior.existenciasBagazosKg || 0) + sumField((r) => r.existenciasBagazosKg)),
+    round2((sumaAnterior.existenciasMostoLitros || 0) + sumField((r) => r.existenciasMostoLitros)),
   ];
 
   const ws = XLSX.utils.aoa_to_sheet([
@@ -131,7 +134,7 @@ export const exportAeatMateriasPrimasExcel = (
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, 'Libro Materias Primas');
-  XLSX.writeFile(wb, `AEAT_Libro_Materias_Primas_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(wb, `AEAT_Libro_Materias_Primas_${getLocalIsoDate()}.xlsx`);
 };
 
 export const exportAeatMateriasPrimasPDF = (
@@ -198,15 +201,15 @@ export const exportAeatMateriasPrimasPDF = (
       '',
       '',
       '',
-      String((sumaAnterior.entradasUvasKg || 0) + sumField((r) => r.entradasUvasKg)),
-      String((sumaAnterior.entradasBagazosKg || 0) + sumField((r) => r.entradasBagazosKg)),
-      String((sumaAnterior.entradasMostoLitros || 0) + sumField((r) => r.entradasMostoLitros)),
-      String((sumaAnterior.salidasUvasKg || 0) + sumField((r) => r.salidasUvasKg)),
-      String((sumaAnterior.salidasBagazosKg || 0) + sumField((r) => r.salidasBagazosKg)),
-      String((sumaAnterior.salidasMostoLitros || 0) + sumField((r) => r.salidasMostoLitros)),
-      String((sumaAnterior.existenciasUvasKg || 0) + sumField((r) => r.existenciasUvasKg)),
-      String((sumaAnterior.existenciasBagazosKg || 0) + sumField((r) => r.existenciasBagazosKg)),
-      String((sumaAnterior.existenciasMostoLitros || 0) + sumField((r) => r.existenciasMostoLitros)),
+      String(round2((sumaAnterior.entradasUvasKg || 0) + sumField((r) => r.entradasUvasKg))),
+      String(round2((sumaAnterior.entradasBagazosKg || 0) + sumField((r) => r.entradasBagazosKg))),
+      String(round2((sumaAnterior.entradasMostoLitros || 0) + sumField((r) => r.entradasMostoLitros))),
+      String(round2((sumaAnterior.salidasUvasKg || 0) + sumField((r) => r.salidasUvasKg))),
+      String(round2((sumaAnterior.salidasBagazosKg || 0) + sumField((r) => r.salidasBagazosKg))),
+      String(round2((sumaAnterior.salidasMostoLitros || 0) + sumField((r) => r.salidasMostoLitros))),
+      String(round2((sumaAnterior.existenciasUvasKg || 0) + sumField((r) => r.existenciasUvasKg))),
+      String(round2((sumaAnterior.existenciasBagazosKg || 0) + sumField((r) => r.existenciasBagazosKg))),
+      String(round2((sumaAnterior.existenciasMostoLitros || 0) + sumField((r) => r.existenciasMostoLitros))),
     ],
   ];
 
@@ -245,7 +248,7 @@ export const exportAeatMateriasPrimasPDF = (
     },
   });
 
-  doc.save(`AEAT_Libro_Materias_Primas_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`AEAT_Libro_Materias_Primas_${getLocalIsoDate()}.pdf`);
 };
 
 export const exportAeatProductoElaboradoExcel = (
@@ -354,7 +357,7 @@ export const exportAeatProductoElaboradoExcel = (
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, 'Libro Producto Elaborado');
-  XLSX.writeFile(wb, `AEAT_Libro_Producto_Elaborado_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(wb, `AEAT_Libro_Producto_Elaborado_${getLocalIsoDate()}.xlsx`);
 };
 
 export const exportAeatProductoElaboradoPDF = (
@@ -473,5 +476,5 @@ export const exportAeatProductoElaboradoPDF = (
     styles: { fontSize: 6.5, cellPadding: 1.4 },
   });
 
-  doc.save(`AEAT_Libro_Producto_Elaborado_${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`AEAT_Libro_Producto_Elaborado_${getLocalIsoDate()}.pdf`);
 };

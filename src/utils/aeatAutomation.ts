@@ -9,7 +9,7 @@ import {
   SalidaRegistro,
   TipoVino,
 } from '../types/winery';
-import { inferTipoVinoFromMarca, inferTipoVinoFromVarieties } from './wineType';
+import { inferTipoVinoFromMarca, inferTipoVinoFromVarieties, isRedVariety } from './wineType';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -29,7 +29,7 @@ export const buildAeatMateriaPrimaFromEntrada = (
     observaciones: `Colleita propia ${anada} · ${ent.parcelaNombre}${varsLabel ? ` (${varsLabel})` : ''}`,
     fecha: ent.fecha,
     docNumero: ent.id,
-    nifOCae: config.cifNif || '76721750Y',
+    nifOCae: config.cifNif || '',
     grado: ent.gradoBaboBaume,
     entradasUvasKg: ent.kgTotales,
     salidasBagazosKg: bagazo,
@@ -94,6 +94,14 @@ export const shouldElaboracionBeInAeat = (el: ElaboracionRegistro): boolean => {
 const inferRowTipoColor = (
   row: Pick<AeatProductoElaboradoRegistro, 'denominacionProducto' | 'variedad'>
 ): 'Blanco' | 'Tinto' => {
+  const varietyTokens = (row.variedad || '')
+    .split(/[,;/|]+/)
+    .map((v) => v.trim())
+    .filter(Boolean);
+  if (varietyTokens.some((v) => isRedVariety(v))) {
+    return 'Tinto';
+  }
+
   const text = `${row.denominacionProducto} ${row.variedad}`
     .toLowerCase()
     .normalize('NFD')
@@ -105,8 +113,17 @@ const inferRowTipoColor = (
     text.includes('palleiros') ||
     text.includes('seixo') ||
     text.includes('caino tinto') ||
+    text.includes('caino bravo') ||
+    text.includes('caino longo') ||
+    text.includes('brancellao') ||
+    text.includes('carabuneira') ||
     text.includes('espadeiro') ||
-    text.includes('souson')
+    text.includes('ferron') ||
+    text.includes('garnacha') ||
+    text.includes('gran negro') ||
+    text.includes('mencia') ||
+    text.includes('souson') ||
+    text.includes('tinta')
   ) {
     return 'Tinto';
   }

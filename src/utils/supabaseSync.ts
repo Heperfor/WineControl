@@ -146,7 +146,7 @@ const nullIfEmpty = (v?: string | null): string | null => {
 const nullIfEmptyDate = (v?: string | null): string | null => {
   if (v === undefined || v === null) return null;
   const trimmed = String(v).trim();
-  return trimmed.length >= 8 ? trimmed.slice(0, 10) : null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : null;
 };
 
 const toNum = (v: unknown, fallback = 0): number => {
@@ -1071,9 +1071,9 @@ const fromMrL1SalidaRow = (r: any): MedioRuralSalidaRegistro => ({
   observacions: toStr(r.observacions),
   origenMovimientoId: toOptStr(r.origen_movimiento_id),
   origenAutomatico: r.origen_automatico ?? undefined,
-  editado_manualmente: Boolean(r.editado_manualmente),
+  editadoManualmente: Boolean(r.editado_manualmente),
   fechaRegistro: toStr(r.fecha_registro),
-} as MedioRuralSalidaRegistro & { editado_manualmente?: boolean });
+});
 
 const fromMrL2SumaRow = (r: any): MedioRuralEmbotelladoSumaAnterior => ({
   entradasLitros: toNum(r.entradas_litros),
@@ -1389,9 +1389,7 @@ export const pushChangesToSupabase = async (
             table === 'aeat_materias_primas_sumas' ||
             table === 'mr_l1_sumas' ||
             table === 'mr_l2_sumas' ||
-            table === 'mr_l3_sumas' ||
-            table === 'fogga_declaraciones' ||
-            table === 'infovi_declaraciones'));
+            table === 'mr_l3_sumas'));
 
       const dirtySet = !shouldPushAllForTable && dirtyIds[table]?.length
         ? new Set(dirtyIds[table])
@@ -1589,13 +1587,7 @@ export const pullAllFromSupabase = async (): Promise<SyncResult> => {
         ? fromMrL1SumaRow(mrL1SumSalRow)
         : initialMedioRuralL1SumaAnteriorSalidas,
       mrL1Entradas: (mrL1EntRes.data || []).map(fromMrL1EntradaRow),
-      mrL1Salidas: (mrL1SalRes.data || []).map((row: any) => {
-        const mapped = fromMrL1SalidaRow(row);
-        return {
-          ...mapped,
-          editadoManualmente: Boolean(row.editado_manualmente),
-        };
-      }),
+      mrL1Salidas: (mrL1SalRes.data || []).map(fromMrL1SalidaRow),
       mrL2SumaAnterior: mrL2SumRes.data?.[0]
         ? fromMrL2SumaRow(mrL2SumRes.data[0])
         : initialMedioRuralL2SumaAnterior,
