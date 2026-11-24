@@ -127,6 +127,7 @@ import {
   pullAllFromSupabase,
   pushChangesToSupabase,
 } from '../utils/supabaseSync';
+import { getLocalIsoDate } from '../utils/dateUtils';
 
 const normalizeTipoRecipiente = (tipo: string): TipoRecipiente => {
   switch (tipo) {
@@ -355,10 +356,37 @@ type SerializedSnapshot = {
 const readStoredJson = <T,>(key: string, fallback: T): T => {
   try {
     const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as T;
+    if (Array.isArray(fallback) && !Array.isArray(parsed)) {
+      return fallback;
+    }
+    return parsed ?? fallback;
   } catch {
     return fallback;
   }
+};
+
+const getChangedRecordIds = <T extends { id: string }>(prevArr: T[], nextArr: T[]): string[] => {
+  const prevMap = new Map(prevArr.map((item) => [item.id, JSON.stringify(item)]));
+  const changed: string[] = [];
+  nextArr.forEach((item) => {
+    if (prevMap.get(item.id) !== JSON.stringify(item)) {
+      changed.push(item.id);
+    }
+  });
+  return changed;
+};
+
+const getNextSeqId = (items: Array<{ id: string }>, prefix: string, padLen = 3): string => {
+  const maxSeq = items.reduce((max, item) => {
+    if (item.id.startsWith(prefix)) {
+      const num = Number(item.id.slice(prefix.length));
+      return Number.isFinite(num) && num > max ? num : max;
+    }
+    return max;
+  }, 0);
+  return `${prefix}${String(Math.max(items.length, maxSeq) + 1).padStart(padLen, '0')}`;
 };
 
 const hasAnyMapEntries = (map: DirtyIdsMap): boolean =>
@@ -416,24 +444,20 @@ const WineryContext = createContext<WineryContextType | null>(null);
 
 export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [bodegaConfig, setBodegaConfig] = useState<BodegaConfig>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_config`);
-    if (!saved) return initialBodegaConfig;
-    const parsed: BodegaConfig = JSON.parse(saved);
+    const parsed = readStoredJson<BodegaConfig>(`${STORAGE_KEY}_config`, initialBodegaConfig);
     if (parsed.nombreBodega === 'Adega Vinhas & Microparaxes') {
       return { ...parsed, nombreBodega: 'Adega Microparaxes' };
     }
     return parsed;
   });
 
-  const [parcelas, setParcelas] = useState<Parcela[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_parcelas`);
-    return saved ? JSON.parse(saved) : initialParcelas;
-  });
+  const [parcelas, setParcelas] = useState<Parcela[]>(() =>
+    readStoredJson<Parcela[]>(`${STORAGE_KEY}_parcelas`, initialParcelas)
+  );
 
   const [depositos, setDepositos] = useState<Deposito[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_depositos`);
-    if (!saved) return initialDepositos;
-    const parsed: Deposito[] = JSON.parse(saved);
+    const parsed = readStoredJson<Deposito[] | null>(`${STORAGE_KEY}_depositos`, null);
+    if (!parsed || !Array.isArray(parsed)) return initialDepositos;
     const hasFloorPlanCoords = parsed.some((d) => Boolean(d.plano));
     const looksLikeLegacyMock =
       !hasFloorPlanCoords &&
@@ -482,9 +506,8 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
 
   const [entradasUva, setEntradasUva] = useState<EntradaUva[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_entradas`);
-    if (!saved) return initialEntradasUva;
-    const parsed: EntradaUva[] = JSON.parse(saved);
+    const parsed = readStoredJson<EntradaUva[] | null>(`${STORAGE_KEY}_entradas`, null);
+    if (!parsed || !Array.isArray(parsed)) return initialEntradasUva;
     return parsed.map((e) => ({
       ...e,
       depositoDestinoId: LEGACY_DEP_ID_MAP[e.depositoDestinoId] || e.depositoDestinoId,
@@ -494,9 +517,11 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
 
   const [elaboraciones, setElaboraciones] = useState<ElaboracionRegistro[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_elaboraciones`);
-    if (!saved) return initialElaboracion;
-    const parsed: ElaboracionRegistro[] = JSON.parse(saved);
+    const parsed = readStoredJson<ElaboracionRegistro[] | null>(
+      `${STORAGE_KEY}_elaboraciones`,
+      null
+    );
+    if (!parsed || !Array.isArray(parsed)) return initialElaboracion;
     return parsed.map((el) => ({
       ...el,
       depositoOrigenId: LEGACY_DEP_ID_MAP[el.depositoOrigenId] || el.depositoOrigenId,
@@ -508,9 +533,11 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
 
   const [embotellados, setEmbotellados] = useState<EmbotelladoRegistro[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_embotellados`);
-    if (!saved) return initialEmbotellados;
-    const parsed: EmbotelladoRegistro[] = JSON.parse(saved);
+    const parsed = readStoredJson<EmbotelladoRegistro[] | null>(
+      `${STORAGE_KEY}_embotellados`,
+      null
+    );
+    if (!parsed || !Array.isArray(parsed)) return initialEmbotellados;
     return parsed.map((emb) => ({
       ...emb,
       depositoProcedenciaId:
@@ -519,25 +546,24 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }));
   });
 
-  const [salidas, setSalidas] = useState<SalidaRegistro[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_salidas`);
-    return saved ? JSON.parse(saved) : initialSalidas;
-  });
+  const [salidas, setSalidas] = useState<SalidaRegistro[]>(() =>
+    readStoredJson<SalidaRegistro[]>(`${STORAGE_KEY}_salidas`, initialSalidas)
+  );
 
-  const [insumosMovimientos, setInsumosMovimientos] = useState<MovimientoInsumo[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_insumos`);
-    return saved ? JSON.parse(saved) : initialInsumosMovimientos;
-  });
+  const [insumosMovimientos, setInsumosMovimientos] = useState<MovimientoInsumo[]>(() =>
+    readStoredJson<MovimientoInsumo[]>(`${STORAGE_KEY}_insumos`, initialInsumosMovimientos)
+  );
 
-  const [analiticas, setAnaliticas] = useState<AnaliticaRegistro[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_analiticas`);
-    return saved ? JSON.parse(saved) : initialAnaliticas;
-  });
+  const [analiticas, setAnaliticas] = useState<AnaliticaRegistro[]>(() =>
+    readStoredJson<AnaliticaRegistro[]>(`${STORAGE_KEY}_analiticas`, initialAnaliticas)
+  );
 
   const [appccAgua, setAppccAgua] = useState<AppccAguaRegistro[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_appcc_agua`);
-    if (!saved) return initialAppccAgua;
-    const parsed: AppccAguaRegistro[] = JSON.parse(saved);
+    const parsed = readStoredJson<AppccAguaRegistro[] | null>(
+      `${STORAGE_KEY}_appcc_agua`,
+      null
+    );
+    if (!parsed || !Array.isArray(parsed)) return initialAppccAgua;
     return parsed.map((a) => ({
       ...a,
       lugarTomaMuestra: a.lugarTomaMuestra || 'Grifo zona elaboración',
@@ -547,9 +573,11 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
 
   const [appccLimpieza, setAppccLimpieza] = useState<AppccLimpiezaRegistro[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_appcc_limpieza`);
-    if (!saved) return initialAppccLimpieza;
-    const parsed: AppccLimpiezaRegistro[] = JSON.parse(saved);
+    const parsed = readStoredJson<AppccLimpiezaRegistro[] | null>(
+      `${STORAGE_KEY}_appcc_limpieza`,
+      null
+    );
+    if (!parsed || !Array.isArray(parsed)) return initialAppccLimpieza;
     const legacyZoneMap: Record<string, string> = {
       BARRICAS: 'B1',
       ÁNFORA: 'Ánfora1',
@@ -568,90 +596,123 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   });
 
-  const [appccResiduos, setAppccResiduos] = useState<AppccResiduoRegistro[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_appcc_residuos`);
-    return saved ? JSON.parse(saved) : initialAppccResiduos;
-  });
+  const [appccResiduos, setAppccResiduos] = useState<AppccResiduoRegistro[]>(() =>
+    readStoredJson<AppccResiduoRegistro[]>(`${STORAGE_KEY}_appcc_residuos`, initialAppccResiduos)
+  );
 
-  const [appccPlagasMant, setAppccPlagasMant] = useState<AppccPlagaMantenimientoRegistro[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_appcc_plagas_mant`);
-    return saved ? JSON.parse(saved) : initialAppccPlagasMant;
-  });
+  const [appccPlagasMant, setAppccPlagasMant] = useState<AppccPlagaMantenimientoRegistro[]>(() =>
+    readStoredJson<AppccPlagaMantenimientoRegistro[]>(
+      `${STORAGE_KEY}_appcc_plagas_mant`,
+      initialAppccPlagasMant
+    )
+  );
 
-  const [appccProveedores, setAppccProveedores] = useState<AppccProveedorRegistro[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_appcc_proveedores`);
-    return saved ? JSON.parse(saved) : initialAppccProveedores;
-  });
+  const [appccProveedores, setAppccProveedores] = useState<AppccProveedorRegistro[]>(() =>
+    readStoredJson<AppccProveedorRegistro[]>(
+      `${STORAGE_KEY}_appcc_proveedores`,
+      initialAppccProveedores
+    )
+  );
 
-  const [appccIncidencias, setAppccIncidencias] = useState<AppccIncidenciaRegistro[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_appcc_incidencias`);
-    return saved ? JSON.parse(saved) : initialAppccIncidencias;
-  });
+  const [appccIncidencias, setAppccIncidencias] = useState<AppccIncidenciaRegistro[]>(() =>
+    readStoredJson<AppccIncidenciaRegistro[]>(
+      `${STORAGE_KEY}_appcc_incidencias`,
+      initialAppccIncidencias
+    )
+  );
 
-  const [aeatSumaAnterior, setAeatSumaAnterior] = useState<AeatMateriaPrimaSumaAnterior>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_aeat_mp_suma`);
-    return saved ? JSON.parse(saved) : initialAeatMateriasPrimasSumaAnterior;
-  });
+  const [aeatSumaAnterior, setAeatSumaAnterior] = useState<AeatMateriaPrimaSumaAnterior>(() =>
+    readStoredJson<AeatMateriaPrimaSumaAnterior>(
+      `${STORAGE_KEY}_aeat_mp_suma`,
+      initialAeatMateriasPrimasSumaAnterior
+    )
+  );
 
-  const [aeatMateriasPrimas, setAeatMateriasPrimas] = useState<AeatMateriaPrimaRegistro[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_aeat_mp`);
-    return saved ? JSON.parse(saved) : initialAeatMateriasPrimas;
-  });
+  const [aeatMateriasPrimas, setAeatMateriasPrimas] = useState<AeatMateriaPrimaRegistro[]>(() =>
+    readStoredJson<AeatMateriaPrimaRegistro[]>(
+      `${STORAGE_KEY}_aeat_mp`,
+      initialAeatMateriasPrimas
+    )
+  );
 
-  const [aeatProductoElaborado, setAeatProductoElaborado] = useState<AeatProductoElaboradoRegistro[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_aeat_pe`);
-    return saved ? JSON.parse(saved) : initialAeatProductoElaborado;
-  });
+  const [aeatProductoElaborado, setAeatProductoElaborado] = useState<AeatProductoElaboradoRegistro[]>(() =>
+    readStoredJson<AeatProductoElaboradoRegistro[]>(
+      `${STORAGE_KEY}_aeat_pe`,
+      initialAeatProductoElaborado
+    )
+  );
 
   // Medio Rural states
-  const [mrL1SumaEntradas, setMrL1SumaEntradas] = useState<MedioRuralEntradaSalidaSuma>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_mr_l1_suma_ent`);
-    return saved ? JSON.parse(saved) : initialMedioRuralL1SumaAnteriorEntradas;
-  });
-  const [mrL1SumaSalidas, setMrL1SumaSalidas] = useState<MedioRuralEntradaSalidaSuma>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_mr_l1_suma_sal`);
-    return saved ? JSON.parse(saved) : initialMedioRuralL1SumaAnteriorSalidas;
-  });
-  const [mrL1Entradas, setMrL1Entradas] = useState<MedioRuralEntradaRegistro[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_mr_l1_ent`);
-    return saved ? JSON.parse(saved) : initialMedioRuralL1Entradas;
-  });
-  const [mrL1Salidas, setMrL1Salidas] = useState<MedioRuralSalidaRegistro[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_mr_l1_sal`);
-    return saved ? JSON.parse(saved) : initialMedioRuralL1Salidas;
-  });
+  const [mrL1SumaEntradas, setMrL1SumaEntradas] = useState<MedioRuralEntradaSalidaSuma>(() =>
+    readStoredJson<MedioRuralEntradaSalidaSuma>(
+      `${STORAGE_KEY}_mr_l1_suma_ent`,
+      initialMedioRuralL1SumaAnteriorEntradas
+    )
+  );
+  const [mrL1SumaSalidas, setMrL1SumaSalidas] = useState<MedioRuralEntradaSalidaSuma>(() =>
+    readStoredJson<MedioRuralEntradaSalidaSuma>(
+      `${STORAGE_KEY}_mr_l1_suma_sal`,
+      initialMedioRuralL1SumaAnteriorSalidas
+    )
+  );
+  const [mrL1Entradas, setMrL1Entradas] = useState<MedioRuralEntradaRegistro[]>(() =>
+    readStoredJson<MedioRuralEntradaRegistro[]>(
+      `${STORAGE_KEY}_mr_l1_ent`,
+      initialMedioRuralL1Entradas
+    )
+  );
+  const [mrL1Salidas, setMrL1Salidas] = useState<MedioRuralSalidaRegistro[]>(() =>
+    readStoredJson<MedioRuralSalidaRegistro[]>(
+      `${STORAGE_KEY}_mr_l1_sal`,
+      initialMedioRuralL1Salidas
+    )
+  );
 
-  const [mrL2SumaAnterior, setMrL2SumaAnterior] = useState<MedioRuralEmbotelladoSumaAnterior>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_mr_l2_suma`);
-    return saved ? JSON.parse(saved) : initialMedioRuralL2SumaAnterior;
-  });
-  const [mrL2Entradas, setMrL2Entradas] = useState<MedioRuralEmbotelladoEntradaRegistro[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_mr_l2_ent`);
-    return saved ? JSON.parse(saved) : initialMedioRuralL2Entradas;
-  });
-  const [mrL2Salidas, setMrL2Salidas] = useState<MedioRuralEmbotelladoSalidaRegistro[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_mr_l2_sal`);
-    return saved ? JSON.parse(saved) : initialMedioRuralL2Salidas;
-  });
+  const [mrL2SumaAnterior, setMrL2SumaAnterior] = useState<MedioRuralEmbotelladoSumaAnterior>(() =>
+    readStoredJson<MedioRuralEmbotelladoSumaAnterior>(
+      `${STORAGE_KEY}_mr_l2_suma`,
+      initialMedioRuralL2SumaAnterior
+    )
+  );
+  const [mrL2Entradas, setMrL2Entradas] = useState<MedioRuralEmbotelladoEntradaRegistro[]>(() =>
+    readStoredJson<MedioRuralEmbotelladoEntradaRegistro[]>(
+      `${STORAGE_KEY}_mr_l2_ent`,
+      initialMedioRuralL2Entradas
+    )
+  );
+  const [mrL2Salidas, setMrL2Salidas] = useState<MedioRuralEmbotelladoSalidaRegistro[]>(() =>
+    readStoredJson<MedioRuralEmbotelladoSalidaRegistro[]>(
+      `${STORAGE_KEY}_mr_l2_sal`,
+      initialMedioRuralL2Salidas
+    )
+  );
 
-  const [mrL3SumaAnterior, setMrL3SumaAnterior] = useState<MedioRuralMovProductoSumaAnterior>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_mr_l3_suma`);
-    return saved ? JSON.parse(saved) : initialMedioRuralL3SumaAnterior;
-  });
-  const [mrL3Movimientos, setMrL3Movimientos] = useState<MedioRuralMovimientoProductoRegistro[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_mr_l3_mov`);
-    return saved ? JSON.parse(saved) : initialMedioRuralL3Movimientos;
-  });
+  const [mrL3SumaAnterior, setMrL3SumaAnterior] = useState<MedioRuralMovProductoSumaAnterior>(() =>
+    readStoredJson<MedioRuralMovProductoSumaAnterior>(
+      `${STORAGE_KEY}_mr_l3_suma`,
+      initialMedioRuralL3SumaAnterior
+    )
+  );
+  const [mrL3Movimientos, setMrL3Movimientos] = useState<MedioRuralMovimientoProductoRegistro[]>(() =>
+    readStoredJson<MedioRuralMovimientoProductoRegistro[]>(
+      `${STORAGE_KEY}_mr_l3_mov`,
+      initialMedioRuralL3Movimientos
+    )
+  );
 
-  const [mrL4Practicas, setMrL4Practicas] = useState<MedioRuralPracticaEnologicaRegistro[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_mr_l4_pract`);
-    return saved ? JSON.parse(saved) : initialMedioRuralL4Practicas;
-  });
+  const [mrL4Practicas, setMrL4Practicas] = useState<MedioRuralPracticaEnologicaRegistro[]>(() =>
+    readStoredJson<MedioRuralPracticaEnologicaRegistro[]>(
+      `${STORAGE_KEY}_mr_l4_pract`,
+      initialMedioRuralL4Practicas
+    )
+  );
 
-  const [mrL5Procesos, setMrL5Procesos] = useState<MedioRuralProcesoElaboracionRegistro[]>(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_mr_l5_proc`);
-    return saved ? JSON.parse(saved) : initialMedioRuralL5Procesos;
-  });
+  const [mrL5Procesos, setMrL5Procesos] = useState<MedioRuralProcesoElaboracionRegistro[]>(() =>
+    readStoredJson<MedioRuralProcesoElaboracionRegistro[]>(
+      `${STORAGE_KEY}_mr_l5_proc`,
+      initialMedioRuralL5Procesos
+    )
+  );
 
   // Declaraciones oficiales FOGGA MR441B e INFOVI AICA
   const [foggaDeclaraciones, setFoggaDeclaraciones] = useState<FoggaMr441bDeclaracion[]>(() => {
@@ -659,6 +720,7 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!saved) return initialFoggaDeclaraciones;
     try {
       const parsed = JSON.parse(saved) as FoggaMr441bDeclaracion[];
+      if (!Array.isArray(parsed)) return initialFoggaDeclaraciones;
       const merged = [...parsed];
       initialFoggaDeclaraciones.forEach((seed) => {
         const idx = merged.findIndex(
@@ -678,7 +740,7 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const [infoviDeclaraciones, setInfoviDeclaraciones] = useState<InfoviDeclaracion[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY}_infovi`);
-    const todayIso = new Date().toISOString().slice(0, 10);
+    const todayIso = getLocalIsoDate();
     const sanitizeUnopened = (list: InfoviDeclaracion[]) =>
       list.map((d) => {
         if (d.origenDatos === 'importada_pdf') return d;
@@ -754,33 +816,80 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, []);
 
+  const markRecordsDirty = useCallback(
+    (table: SyncTableName, ids: string[]) => {
+      const validIds = ids.filter(Boolean);
+      if (validIds.length === 0) return;
+      const curr = new Set(dirtyIdsRef.current[table] || []);
+      validIds.forEach((id) => curr.add(id));
+      dirtyIdsRef.current[table] = Array.from(curr);
+      if (pendingDeletesRef.current[table]?.length) {
+        const idSet = new Set(validIds);
+        pendingDeletesRef.current[table] = pendingDeletesRef.current[table]!.filter(
+          (x) => !idSet.has(x)
+        );
+      }
+      persistDirtyQueues();
+    },
+    [persistDirtyQueues]
+  );
+
   const applyRemoteState = useCallback(
     (remote: WineryDatabaseState, missingOptionalTables?: SyncTableName[]) => {
+      const normalizedDepositos = remote.depositos.map((d, idx) => {
+        const baseMatch = initialDepositos.find((b) => b.id === d.id);
+        return {
+          ...d,
+          tipoRecipiente: normalizeTipoRecipiente(d.tipoRecipiente),
+          plano: d.plano || baseMatch?.plano || {
+            x: 680 + (idx % 3) * 65,
+            y: 300 + Math.floor(idx / 3) * 80,
+            zona: 'nave',
+            forma: normalizeTipoRecipiente(d.tipoRecipiente).includes('Barrica')
+              ? 'barrica'
+              : normalizeTipoRecipiente(d.tipoRecipiente) === 'Ánfora'
+              ? 'anfora'
+              : 'cilindro',
+          },
+        };
+      });
+
+      const normalizedEmbotellados = remote.embotellados.map((emb) => {
+        const totalSalidasParaEsteLote = remote.salidas
+          .filter((s) => s.lote === emb.lote || s.embotelladoId === emb.id)
+          .reduce((sum, s) => sum + s.cantidadBotellas, 0);
+        const disponible = Math.max(0, emb.cantidadBotellas075 - totalSalidasParaEsteLote);
+        return emb.botellasDisponibles === disponible
+          ? emb
+          : { ...emb, botellasDisponibles: disponible };
+      });
+
+      const applyFogga = !missingOptionalTables?.includes('fogga_declaraciones');
+      const applyInfovi = !missingOptionalTables?.includes('infovi_declaraciones');
+      const prevLocal = currentStateRef.current;
+
+      const appliedState: WineryDatabaseState = {
+        ...remote,
+        depositos: normalizedDepositos,
+        embotellados: normalizedEmbotellados,
+        foggaDeclaraciones: applyFogga
+          ? remote.foggaDeclaraciones
+          : prevLocal?.foggaDeclaraciones ?? [],
+        infoviDeclaraciones: applyInfovi
+          ? remote.infoviDeclaraciones
+          : prevLocal?.infoviDeclaraciones ?? [],
+      };
+
       isApplyingRemoteRef.current = true;
+      prevSnapshotRef.current = buildSerializedSnapshot(appliedState);
+      currentStateRef.current = appliedState;
+
       setBodegaConfig(remote.bodegaConfig);
       setParcelas(remote.parcelas);
-      setDepositos(
-        remote.depositos.map((d, idx) => {
-          const baseMatch = initialDepositos.find((b) => b.id === d.id);
-          return {
-            ...d,
-            tipoRecipiente: normalizeTipoRecipiente(d.tipoRecipiente),
-            plano: d.plano || baseMatch?.plano || {
-              x: 680 + (idx % 3) * 65,
-              y: 300 + Math.floor(idx / 3) * 80,
-              zona: 'nave',
-              forma: normalizeTipoRecipiente(d.tipoRecipiente).includes('Barrica')
-                ? 'barrica'
-                : normalizeTipoRecipiente(d.tipoRecipiente) === 'Ánfora'
-                ? 'anfora'
-                : 'cilindro',
-            },
-          };
-        })
-      );
+      setDepositos(normalizedDepositos);
       setEntradasUva(remote.entradasUva);
       setElaboraciones(remote.elaboraciones);
-      setEmbotellados(remote.embotellados);
+      setEmbotellados(normalizedEmbotellados);
       setSalidas(remote.salidas);
       setInsumosMovimientos(remote.insumosMovimientos);
       setAnaliticas(remote.analiticas);
@@ -804,16 +913,10 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setMrL3Movimientos(remote.mrL3Movimientos);
       setMrL4Practicas(remote.mrL4Practicas);
       setMrL5Procesos(remote.mrL5Procesos);
-      if (
-        !missingOptionalTables?.includes('fogga_declaraciones') &&
-        remote.foggaDeclaraciones.length > 0
-      ) {
+      if (applyFogga) {
         setFoggaDeclaraciones(remote.foggaDeclaraciones);
       }
-      if (
-        !missingOptionalTables?.includes('infovi_declaraciones') &&
-        remote.infoviDeclaraciones.length > 0
-      ) {
+      if (applyInfovi) {
         setInfoviDeclaraciones(remote.infoviDeclaraciones);
       }
     },
@@ -1312,44 +1415,84 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   };
 
+  const getLiveState = (): WineryDatabaseState =>
+    currentStateRef.current || {
+      bodegaConfig,
+      parcelas,
+      depositos,
+      entradasUva,
+      elaboraciones,
+      embotellados,
+      salidas,
+      insumosMovimientos,
+      analiticas,
+      appccAgua,
+      appccLimpieza,
+      appccResiduos,
+      appccPlagasMant,
+      appccProveedores,
+      appccIncidencias,
+      aeatSumaAnterior,
+      aeatMateriasPrimas,
+      aeatProductoElaborado,
+      mrL1SumaEntradas,
+      mrL1SumaSalidas,
+      mrL1Entradas,
+      mrL1Salidas,
+      mrL2SumaAnterior,
+      mrL2Entradas,
+      mrL2Salidas,
+      mrL3SumaAnterior,
+      mrL3Movimientos,
+      mrL4Practicas,
+      mrL5Procesos,
+      foggaDeclaraciones,
+      infoviDeclaraciones,
+    };
+
   // CRUD: BodegaConfig
   const updateBodegaConfig = (config: BodegaConfig) => {
+    const live = getLiveState();
+    currentStateRef.current = { ...live, bodegaConfig: config };
     setBodegaConfig(config);
   };
 
   // CRUD: Parcelas
   const addParcela = (parcelaData: Omit<Parcela, 'id'>): Parcela => {
-    const newId = `PARC-${String(parcelas.length + 1).padStart(2, '0')}`;
+    const live = getLiveState();
+    const newId = getNextSeqId(live.parcelas, 'PARC-', 2);
     const newParcela: Parcela = {
       ...parcelaData,
       id: newId,
     };
-    setParcelas((prev) => [...prev, newParcela]);
+    const nextParcelas = [...live.parcelas, newParcela];
+    currentStateRef.current = { ...live, parcelas: nextParcelas };
+    setParcelas(nextParcelas);
     return newParcela;
   };
 
   const updateParcela = (id: string, updated: Partial<Parcela>) => {
-    setParcelas((prev) =>
-      prev.map((p) => {
-        if (p.id === id) {
-          const newP = { ...p, ...updated };
-          // Keep entradas in sync if parcel name changed
-          if (updated.nombre && updated.nombre !== p.nombre) {
-            setEntradasUva((oldEntradas) =>
-              oldEntradas.map((e) => (e.parcelaId === id ? { ...e, parcelaNombre: updated.nombre! } : e))
-            );
-          }
-          return newP;
-        }
-        return p;
-      })
-    );
+    const live = getLiveState();
+    const prevParcela = live.parcelas.find((p) => p.id === id);
+    const nextParcelas = live.parcelas.map((p) => (p.id === id ? { ...p, ...updated } : p));
+    let nextEntradas = live.entradasUva;
+    if (prevParcela && updated.nombre && updated.nombre !== prevParcela.nombre) {
+      nextEntradas = live.entradasUva.map((e) =>
+        e.parcelaId === id ? { ...e, parcelaNombre: updated.nombre! } : e
+      );
+      setEntradasUva(nextEntradas);
+    }
+    currentStateRef.current = { ...live, parcelas: nextParcelas, entradasUva: nextEntradas };
+    setParcelas(nextParcelas);
   };
 
   const deleteParcela = (id: string): boolean => {
     const check = checkReferentialIntegrity('parcela', id);
     if (!check.canDelete) return false;
-    setParcelas((prev) => prev.filter((p) => p.id !== id));
+    const live = getLiveState();
+    const nextParcelas = live.parcelas.filter((p) => p.id !== id);
+    currentStateRef.current = { ...live, parcelas: nextParcelas };
+    setParcelas(nextParcelas);
     return true;
   };
 
@@ -1389,256 +1532,414 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // CRUD: Entradas de Uva
-  const addEntradaUva = (entradaData: Omit<EntradaUva, 'id' | 'fechaRegistro'>): EntradaUva => {
-    const year = new Date().getFullYear();
-    const prefix = `ENT-${year}-`;
-    const maxSeq = entradasUva.reduce((max, item) => {
-      if (item.id.startsWith(prefix)) {
-        const num = Number(item.id.slice(prefix.length));
-        return Number.isFinite(num) && num > max ? num : max;
+  const getEntradaLiters = (ent: Pick<EntradaUva, 'litrosMosto' | 'litrosEstimadosMosto' | 'kgTotales'>): number =>
+    ent.litrosMosto || ent.litrosEstimadosMosto || Math.round(ent.kgTotales * 0.68);
+
+  const adjustTankVarieties = (
+    varieties: Deposito['variedades'] | undefined,
+    desglose: EntradaUva['desgloseVariedades'],
+    kgTotales: number,
+    totalLiters: number,
+    sign: 1 | -1
+  ) => {
+    const currentVarieties = (varieties || []).map((cv) => ({ ...cv }));
+    desglose.forEach((v) => {
+      const vLiters = Math.round((v.kg / (kgTotales || 1)) * totalLiters);
+      const idx = currentVarieties.findIndex(
+        (cv) => cv.variedad.toLowerCase() === v.variedad.toLowerCase()
+      );
+      if (idx >= 0) {
+        currentVarieties[idx] = {
+          ...currentVarieties[idx],
+          litros: Math.max(0, currentVarieties[idx].litros + sign * vLiters),
+        };
+      } else if (sign > 0 && vLiters > 0) {
+        currentVarieties.push({
+          variedad: v.variedad,
+          litros: vLiters,
+          porcentaje: 0,
+        });
       }
-      return max;
-    }, 0);
-    const newId = `${prefix}${String(Math.max(entradasUva.length, maxSeq) + 1).padStart(3, '0')}`;
+    });
+
+    const filtered = currentVarieties.filter((item) => item.litros > 0);
+    const totalV = filtered.reduce((sum, item) => sum + item.litros, 0) || 1;
+    return filtered.map((item) => ({
+      ...item,
+      porcentaje: Math.round((item.litros / totalV) * 100),
+    }));
+  };
+
+  const addEntradaUva = (entradaData: Omit<EntradaUva, 'id' | 'fechaRegistro'>): EntradaUva => {
+    const live = getLiveState();
+    const year = new Date().getFullYear();
+    const newId = getNextSeqId(live.entradasUva, `ENT-${year}-`, 3);
     const newEntrada: EntradaUva = {
       ...entradaData,
       id: newId,
       fechaRegistro: new Date().toISOString(),
     };
 
-    setEntradasUva((prev) => [newEntrada, ...prev]);
+    const nextEntradas = [newEntrada, ...live.entradasUva];
 
-    // Automatically update the destination tank's volume, varieties and state
-    setDepositos((prev) =>
-      prev.map((d) => {
-        if (d.id === entradaData.depositoDestinoId) {
-          const addedLiters =
-            entradaData.litrosMosto ||
-            (entradaData as any).litrosEstimadosMosto ||
-            Math.round(entradaData.kgTotales * 0.68);
-          const newTotalLiters = Math.min(d.capacidadLitros, (d.litrosActuales || 0) + addedLiters);
-
-          // Update varieties breakdown
-          const currentVarieties = [...(d.variedades || [])];
-          entradaData.desgloseVariedades.forEach((v) => {
-            const vLiters = Math.round((v.kg / (entradaData.kgTotales || 1)) * addedLiters);
-            const idx = currentVarieties.findIndex(
-              (cv) => cv.variedad.toLowerCase() === v.variedad.toLowerCase()
-            );
-            if (idx >= 0) {
-              currentVarieties[idx].litros += vLiters;
-            } else {
-              currentVarieties.push({
-                variedad: v.variedad,
-                litros: vLiters,
-                porcentaje: 0,
-              });
-            }
-          });
-
-          // Recalculate percentages
-          const totalV = currentVarieties.reduce((sum, item) => sum + item.litros, 0) || 1;
-          const updatedVars = currentVarieties.map((item) => ({
-            ...item,
-            porcentaje: Math.round((item.litros / totalV) * 100),
-          }));
-
-          return {
-            ...d,
-            litrosActuales: newTotalLiters,
-            anoCosecha: entradaData.anada || d.anoCosecha,
-            estado: d.estado === 'Vacío' ? 'Fermentación Alcohólica' : d.estado,
-            variedades: updatedVars,
-            ultimaOperacion: `Entrada uva vendimia (${entradaData.kgTotales} kg)`,
-            fechaUltimaOperacion: entradaData.fecha,
-          };
-        }
-        return d;
-      })
-    );
-
-    // Trigger APPCC Automático: genera registros L+D para despalilladora, bombas, mangueras, depósito receptor (y prensa/suelo) + salida raspón a finca
-    const responsableAppcc = bodegaConfig.responsableTecnico || 'Héctor Pérez Formoso';
-    const autoLd = buildLimpiezaForEntradaUva(newEntrada, responsableAppcc);
-    setAppccLimpieza((prev) => {
-      const updatedPrev = prev.map((existing) => {
-        const sameSlot = autoLd.find(
-          (n) =>
-            n.fecha === existing.fecha &&
-            n.zonaEquipo.toUpperCase() === existing.zonaEquipo.toUpperCase()
+    // Automatically update the destination tank's volume, varieties and state immutably
+    const nextDepositos = live.depositos.map((d) => {
+      if (d.id === entradaData.depositoDestinoId) {
+        const addedLiters = getEntradaLiters(entradaData);
+        const newTotalLiters = Math.min(d.capacidadLitros, (d.litrosActuales || 0) + addedLiters);
+        const updatedVars = adjustTankVarieties(
+          d.variedades,
+          entradaData.desgloseVariedades,
+          entradaData.kgTotales,
+          addedLiters,
+          1
         );
-        if (
-          sameSlot &&
-          existing.origenAutomatico === 'Vendimia' &&
-          !existing.editadoManualmente &&
-          !existing.observaciones?.includes(newEntrada.id)
-        ) {
-          return {
-            ...existing,
-            observaciones: existing.observaciones
-              ? `${existing.observaciones} · + ${newEntrada.id}: ${newEntrada.parcelaNombre} (${newEntrada.kgTotales} kg) → Dep. ${newEntrada.depositoDestinoId}`
-              : sameSlot.observaciones,
-          };
-        }
-        return existing;
-      });
 
-      const nuevos = autoLd.filter(
+        return {
+          ...d,
+          litrosActuales: newTotalLiters,
+          anoCosecha: entradaData.anada || d.anoCosecha,
+          estado: d.estado === 'Vacío' ? ('Fermentación Alcohólica' as const) : d.estado,
+          variedades: updatedVars,
+          ultimaOperacion: `Entrada uva vendimia (${entradaData.kgTotales} kg)`,
+          fechaUltimaOperacion: entradaData.fecha,
+        };
+      }
+      return d;
+    });
+
+    // Trigger APPCC Automático
+    const responsableAppcc = live.bodegaConfig.responsableTecnico || 'Héctor Pérez Formoso';
+    const autoLd = buildLimpiezaForEntradaUva(newEntrada, responsableAppcc);
+    const updatedPrevLd = live.appccLimpieza.map((existing) => {
+      const sameSlot = autoLd.find(
         (n) =>
-          !updatedPrev.some(
-            (e) =>
-              e.fecha === n.fecha &&
-              e.zonaEquipo.toUpperCase() === n.zonaEquipo.toUpperCase()
-          )
+          n.fecha === existing.fecha &&
+          n.zonaEquipo.toUpperCase() === existing.zonaEquipo.toUpperCase()
       );
-      return [...nuevos, ...updatedPrev];
+      if (
+        sameSlot &&
+        existing.origenAutomatico === 'Vendimia' &&
+        !existing.editadoManualmente &&
+        !existing.observaciones?.includes(newEntrada.id)
+      ) {
+        return {
+          ...existing,
+          observaciones: existing.observaciones
+            ? `${existing.observaciones} · + ${newEntrada.id}: ${newEntrada.parcelaNombre} (${newEntrada.kgTotales} kg) → Dep. ${newEntrada.depositoDestinoId}`
+            : sameSlot.observaciones,
+        };
+      }
+      return existing;
     });
+    const nuevosLd = autoLd.filter(
+      (n) =>
+        !updatedPrevLd.some(
+          (e) =>
+            e.fecha === n.fecha &&
+            e.zonaEquipo.toUpperCase() === n.zonaEquipo.toUpperCase()
+        )
+    );
+    const nextAppccLimpieza = [...nuevosLd, ...updatedPrevLd];
     const autoRes = buildResiduoForEntradaUva(newEntrada, responsableAppcc);
-    setAppccResiduos((prev) => [autoRes, ...prev]);
+    const nextAppccResiduos = [autoRes, ...live.appccResiduos];
 
-    // Trigger AEAT Automático: Libro de Materias Primas + Libro de Producto Elaborado
-    setAeatMateriasPrimas((prev) => {
-      if (prev.some((r) => r.origenEntradaId === newEntrada.id)) return prev;
-      const nextOrder = prev.reduce((max, r) => Math.max(max, r.numeroOrden), 0) + 1;
-      const newRow = buildAeatMateriaPrimaFromEntrada(newEntrada, nextOrder, bodegaConfig);
-      return [...prev, newRow].sort((a, b) => a.numeroOrden - b.numeroOrden);
-    });
-    setAeatProductoElaborado((prev) => {
-      if (prev.some((r) => r.origenMovimientoId === newEntrada.id)) return prev;
-      const newRow = buildAeatProductoFromEntrada(newEntrada, depositos, bodegaConfig);
-      return recalculateProductoElaboradoBalances([...prev, newRow]);
-    });
+    // Trigger AEAT Automático using fresh nextDepositos
+    let nextAeatMp = live.aeatMateriasPrimas;
+    if (!live.aeatMateriasPrimas.some((r) => r.origenEntradaId === newEntrada.id)) {
+      const nextOrder = live.aeatMateriasPrimas.reduce((max, r) => Math.max(max, r.numeroOrden), 0) + 1;
+      const newRow = buildAeatMateriaPrimaFromEntrada(newEntrada, nextOrder, live.bodegaConfig);
+      nextAeatMp = [...live.aeatMateriasPrimas, newRow].sort((a, b) => a.numeroOrden - b.numeroOrden);
+    }
+
+    let nextAeatPe = live.aeatProductoElaborado;
+    if (!live.aeatProductoElaborado.some((r) => r.origenMovimientoId === newEntrada.id)) {
+      const newRow = buildAeatProductoFromEntrada(newEntrada, nextDepositos, live.bodegaConfig);
+      nextAeatPe = recalculateProductoElaboradoBalances([...live.aeatProductoElaborado, newRow]);
+    }
 
     // Trigger Medio Rural Automático: Libro 1 (Entradas) + Libro 5 (Procesos Elaboración)
-    setMrL1Entradas((prev) => {
-      if (prev.some((r) => r.origenMovimientoId === newEntrada.id)) return prev;
-      return [...prev, buildMedioRuralL1EntradaFromVendimia(newEntrada)].sort((a, b) =>
-        a.data.localeCompare(b.data)
+    let nextMrL1Entradas = live.mrL1Entradas;
+    if (!live.mrL1Entradas.some((r) => r.origenMovimientoId === newEntrada.id)) {
+      nextMrL1Entradas = [...live.mrL1Entradas, buildMedioRuralL1EntradaFromVendimia(newEntrada)].sort(
+        (a, b) => a.data.localeCompare(b.data)
       );
-    });
-    setMrL5Procesos((prev) => {
-      if (prev.some((r) => r.origenMovimientoId === newEntrada.id)) return prev;
-      return reindexLibro5Procesos([...prev, buildMedioRuralL5FromEntrada(newEntrada)]);
-    });
+    }
+
+    let nextMrL5Procesos = live.mrL5Procesos;
+    if (!live.mrL5Procesos.some((r) => r.origenMovimientoId === newEntrada.id)) {
+      nextMrL5Procesos = reindexLibro5Procesos([
+        ...live.mrL5Procesos,
+        buildMedioRuralL5FromEntrada(newEntrada),
+      ]);
+    }
+
+    currentStateRef.current = {
+      ...live,
+      entradasUva: nextEntradas,
+      depositos: nextDepositos,
+      appccLimpieza: nextAppccLimpieza,
+      appccResiduos: nextAppccResiduos,
+      aeatMateriasPrimas: nextAeatMp,
+      aeatProductoElaborado: nextAeatPe,
+      mrL1Entradas: nextMrL1Entradas,
+      mrL5Procesos: nextMrL5Procesos,
+    };
+
+    setEntradasUva(nextEntradas);
+    setDepositos(nextDepositos);
+    setAppccLimpieza(nextAppccLimpieza);
+    setAppccResiduos(nextAppccResiduos);
+    setAeatMateriasPrimas(nextAeatMp);
+    setAeatProductoElaborado(nextAeatPe);
+    setMrL1Entradas(nextMrL1Entradas);
+    setMrL5Procesos(nextMrL5Procesos);
+
+    markRecordsDirty('aeat_materias_primas', getChangedRecordIds(live.aeatMateriasPrimas, nextAeatMp));
+    markRecordsDirty('aeat_producto_elaborado', getChangedRecordIds(live.aeatProductoElaborado, nextAeatPe));
+    markRecordsDirty('mr_l1_entradas', getChangedRecordIds(live.mrL1Entradas, nextMrL1Entradas));
+    markRecordsDirty('mr_l5_procesos', getChangedRecordIds(live.mrL5Procesos, nextMrL5Procesos));
 
     return newEntrada;
   };
 
   const updateEntradaUva = (id: string, updated: Partial<EntradaUva>) => {
-    const existing = entradasUva.find((e) => e.id === id);
-    const mergedEntrada = existing ? { ...existing, ...updated } : null;
-    const nextEntradas = entradasUva.map((e) => (e.id === id ? { ...e, ...updated } : e));
+    const live = getLiveState();
+    const existing = live.entradasUva.find((e) => e.id === id);
+    if (!existing) return;
+
+    const mergedEntrada: EntradaUva = { ...existing, ...updated };
+    const nextEntradas = live.entradasUva.map((e) => (e.id === id ? mergedEntrada : e));
+
+    // Recalculate tank volume & varieties coherently (same tank or tank transfer)
+    const oldLiters = getEntradaLiters(existing);
+    const newLiters = getEntradaLiters(mergedEntrada);
+    const tankChanged = existing.depositoDestinoId !== mergedEntrada.depositoDestinoId;
+    const litersOrVarietiesChanged =
+      oldLiters !== newLiters ||
+      existing.kgTotales !== mergedEntrada.kgTotales ||
+      JSON.stringify(existing.desgloseVariedades) !== JSON.stringify(mergedEntrada.desgloseVariedades);
+
+    let nextDepositos = live.depositos;
+    if (tankChanged || litersOrVarietiesChanged) {
+      nextDepositos = live.depositos.map((d) => {
+        if (tankChanged) {
+          if (d.id === existing.depositoDestinoId) {
+            const reducedLiters = Math.max(0, (d.litrosActuales || 0) - oldLiters);
+            return {
+              ...d,
+              litrosActuales: reducedLiters,
+              estado: reducedLiters === 0 ? ('Vacío' as const) : d.estado,
+              variedades: adjustTankVarieties(
+                d.variedades,
+                existing.desgloseVariedades,
+                existing.kgTotales,
+                oldLiters,
+                -1
+              ),
+            };
+          }
+          if (d.id === mergedEntrada.depositoDestinoId) {
+            const addedTotal = Math.min(d.capacidadLitros, (d.litrosActuales || 0) + newLiters);
+            return {
+              ...d,
+              litrosActuales: addedTotal,
+              anoCosecha: mergedEntrada.anada || d.anoCosecha,
+              estado: d.estado === 'Vacío' ? ('Fermentación Alcohólica' as const) : d.estado,
+              variedades: adjustTankVarieties(
+                d.variedades,
+                mergedEntrada.desgloseVariedades,
+                mergedEntrada.kgTotales,
+                newLiters,
+                1
+              ),
+              ultimaOperacion: `Entrada uva vendimia (${mergedEntrada.kgTotales} kg)`,
+              fechaUltimaOperacion: mergedEntrada.fecha,
+            };
+          }
+          return d;
+        }
+
+        if (d.id === mergedEntrada.depositoDestinoId) {
+          const delta = newLiters - oldLiters;
+          const nextLiters = Math.min(d.capacidadLitros, Math.max(0, (d.litrosActuales || 0) + delta));
+          const afterSub = adjustTankVarieties(
+            d.variedades,
+            existing.desgloseVariedades,
+            existing.kgTotales,
+            oldLiters,
+            -1
+          );
+          const afterAdd = adjustTankVarieties(
+            afterSub,
+            mergedEntrada.desgloseVariedades,
+            mergedEntrada.kgTotales,
+            newLiters,
+            1
+          );
+          return {
+            ...d,
+            litrosActuales: nextLiters,
+            anoCosecha: mergedEntrada.anada || d.anoCosecha,
+            estado: nextLiters === 0 ? ('Vacío' as const) : d.estado === 'Vacío' ? ('Fermentación Alcohólica' as const) : d.estado,
+            variedades: afterAdd,
+            ultimaOperacion: `Entrada uva vendimia (${mergedEntrada.kgTotales} kg)`,
+            fechaUltimaOperacion: mergedEntrada.fecha,
+          };
+        }
+        return d;
+      });
+    }
+
+    // Keep unedited APPCC L+D & regulatory records synchronized using fresh nextDepositos/nextEntradas
+    const responsableAppcc = live.bodegaConfig.responsableTecnico || 'Héctor Pérez Formoso';
+    const rebuiltLd = buildLimpiezaForEntradaUva(mergedEntrada, responsableAppcc);
+    const cleanedLd = live.appccLimpieza.filter(
+      (l) => !(l.referenciaOperacionId === id && !l.editadoManualmente)
+    );
+    const nuevosLd = rebuiltLd.filter(
+      (n) =>
+        !cleanedLd.some(
+          (e) =>
+            e.fecha === n.fecha &&
+            e.zonaEquipo.toUpperCase() === n.zonaEquipo.toUpperCase()
+        )
+    );
+    const nextAppccLimpieza = [...nuevosLd, ...cleanedLd];
+
+    const nextAeatMp = syncMateriasPrimasWithEntradas(
+      live.aeatMateriasPrimas,
+      nextEntradas,
+      live.bodegaConfig,
+      { addMissing: false, updateExisting: true }
+    );
+    const nextAeatPe = syncProductoElaboradoWithBodega(
+      live.aeatProductoElaborado,
+      {
+        entradasUva: nextEntradas,
+        elaboraciones: live.elaboraciones,
+        embotellados: live.embotellados,
+        salidas: live.salidas,
+        depositos: nextDepositos,
+        config: live.bodegaConfig,
+      },
+      { addMissing: false, updateExisting: true }
+    );
+    const nextMrL1Entradas = syncMedioRuralLibro1(
+      live.mrL1Entradas,
+      live.mrL1Salidas,
+      {
+        entradasUva: nextEntradas,
+        elaboraciones: live.elaboraciones,
+        embotellados: live.embotellados,
+        depositos: nextDepositos,
+      },
+      { addMissing: false, updateExisting: true }
+    ).entradas;
+    const nextMrL5Procesos = syncMedioRuralLibro5(
+      live.mrL5Procesos,
+      {
+        entradasUva: nextEntradas,
+        elaboraciones: live.elaboraciones,
+        depositos: nextDepositos,
+      },
+      { addMissing: false, updateExisting: true }
+    );
+
+    currentStateRef.current = {
+      ...live,
+      entradasUva: nextEntradas,
+      depositos: nextDepositos,
+      appccLimpieza: nextAppccLimpieza,
+      aeatMateriasPrimas: nextAeatMp,
+      aeatProductoElaborado: nextAeatPe,
+      mrL1Entradas: nextMrL1Entradas,
+      mrL5Procesos: nextMrL5Procesos,
+    };
 
     setEntradasUva(nextEntradas);
-
-    // Keep unedited APPCC L+D & AEAT trigger records synchronized when date, volume, or tank changes
-    if (mergedEntrada) {
-      const responsableAppcc = bodegaConfig.responsableTecnico || 'Héctor Pérez Formoso';
-      const rebuiltLd = buildLimpiezaForEntradaUva(mergedEntrada, responsableAppcc);
-      setAppccLimpieza((prev) => {
-        const cleaned = prev.filter(
-          (l) => !(l.referenciaOperacionId === id && !l.editadoManualmente)
-        );
-        const nuevos = rebuiltLd.filter(
-          (n) =>
-            !cleaned.some(
-              (e) =>
-                e.fecha === n.fecha &&
-                e.zonaEquipo.toUpperCase() === n.zonaEquipo.toUpperCase()
-            )
-        );
-        return [...nuevos, ...cleaned];
-      });
-
-      setAeatMateriasPrimas((prev) =>
-        syncMateriasPrimasWithEntradas(prev, nextEntradas, bodegaConfig, {
-          addMissing: false,
-          updateExisting: true,
-        })
-      );
-      setAeatProductoElaborado((prev) =>
-        syncProductoElaboradoWithBodega(
-          prev,
-          {
-            entradasUva: nextEntradas,
-            elaboraciones,
-            embotellados,
-            salidas,
-            depositos,
-            config: bodegaConfig,
-          },
-          { addMissing: false, updateExisting: true }
-        )
-      );
-
-      // Sync Medio Rural Libro 1 & Libro 5
-      setMrL1Entradas((prev) =>
-        syncMedioRuralLibro1(
-          prev,
-          mrL1Salidas,
-          { entradasUva: nextEntradas, elaboraciones, embotellados, depositos },
-          { addMissing: false, updateExisting: true }
-        ).entradas
-      );
-      setMrL5Procesos((prev) =>
-        syncMedioRuralLibro5(
-          prev,
-          { entradasUva: nextEntradas, elaboraciones, depositos },
-          { addMissing: false, updateExisting: true }
-        )
-      );
+    if (nextDepositos !== live.depositos) {
+      setDepositos(nextDepositos);
     }
+    setAppccLimpieza(nextAppccLimpieza);
+    setAeatMateriasPrimas(nextAeatMp);
+    setAeatProductoElaborado(nextAeatPe);
+    setMrL1Entradas(nextMrL1Entradas);
+    setMrL5Procesos(nextMrL5Procesos);
+
+    markRecordsDirty('aeat_materias_primas', getChangedRecordIds(live.aeatMateriasPrimas, nextAeatMp));
+    markRecordsDirty('aeat_producto_elaborado', getChangedRecordIds(live.aeatProductoElaborado, nextAeatPe));
+    markRecordsDirty('mr_l1_entradas', getChangedRecordIds(live.mrL1Entradas, nextMrL1Entradas));
+    markRecordsDirty('mr_l5_procesos', getChangedRecordIds(live.mrL5Procesos, nextMrL5Procesos));
   };
 
   const deleteEntradaUva = (id: string): boolean => {
-    const entrada = entradasUva.find((e) => e.id === id);
+    const live = getLiveState();
+    const entrada = live.entradasUva.find((e) => e.id === id);
     if (!entrada) return false;
 
-    // Adjust destination tank volume downwards
-    if (entrada.depositoDestinoId) {
-      setDepositos((prev) =>
-        prev.map((d) => {
+    const removedLiters = getEntradaLiters(entrada);
+    const nextDepositos = entrada.depositoDestinoId
+      ? live.depositos.map((d) => {
           if (d.id === entrada.depositoDestinoId) {
-            const removedLiters =
-              entrada.litrosMosto ||
-              (entrada as any).litrosEstimadosMosto ||
-              Math.round(entrada.kgTotales * 0.68);
             const newLiters = Math.max(0, d.litrosActuales - removedLiters);
             return {
               ...d,
               litrosActuales: newLiters,
-              estado: newLiters === 0 ? 'Vacío' : d.estado,
+              estado: newLiters === 0 ? ('Vacío' as const) : d.estado,
+              variedades: adjustTankVarieties(
+                d.variedades,
+                entrada.desgloseVariedades,
+                entrada.kgTotales,
+                removedLiters,
+                -1
+              ),
             };
           }
           return d;
         })
-      );
-    }
+      : live.depositos;
 
-    const nextEntradas = entradasUva.filter((e) => e.id !== id);
+    const nextEntradas = live.entradasUva.filter((e) => e.id !== id);
+    const nextAppccLimpieza = live.appccLimpieza.filter(
+      (l) => !(l.referenciaOperacionId === id && !l.editadoManualmente)
+    );
+    const nextAppccResiduos = live.appccResiduos.filter(
+      (r) => !(r.referenciaOperacionId === id && !r.editadoManualmente)
+    );
+    const nextAeatMp = live.aeatMateriasPrimas.filter(
+      (r) => !(r.origenEntradaId === id && !r.editadoManualmente)
+    );
+    const nextAeatPe = recalculateProductoElaboradoBalances(
+      live.aeatProductoElaborado.filter((r) => !(r.origenMovimientoId === id && !r.editadoManualmente))
+    );
+    const nextMrL1Entradas = live.mrL1Entradas.filter(
+      (r) => !(r.origenMovimientoId === id && !r.editadoManualmente)
+    );
+    const nextMrL5Procesos = reindexLibro5Procesos(
+      live.mrL5Procesos.filter((r) => !(r.origenMovimientoId === id && !r.editadoManualmente))
+    );
+
+    currentStateRef.current = {
+      ...live,
+      depositos: nextDepositos,
+      entradasUva: nextEntradas,
+      appccLimpieza: nextAppccLimpieza,
+      appccResiduos: nextAppccResiduos,
+      aeatMateriasPrimas: nextAeatMp,
+      aeatProductoElaborado: nextAeatPe,
+      mrL1Entradas: nextMrL1Entradas,
+      mrL5Procesos: nextMrL5Procesos,
+    };
+
+    if (nextDepositos !== live.depositos) setDepositos(nextDepositos);
     setEntradasUva(nextEntradas);
-    setAppccLimpieza((prev) =>
-      prev.filter((l) => !(l.referenciaOperacionId === id && !l.editadoManualmente))
-    );
-    setAppccResiduos((prev) =>
-      prev.filter((r) => !(r.referenciaOperacionId === id && !r.editadoManualmente))
-    );
-    setAeatMateriasPrimas((prev) =>
-      prev.filter((r) => !(r.origenEntradaId === id && !r.editadoManualmente))
-    );
-    setAeatProductoElaborado((prev) =>
-      recalculateProductoElaboradoBalances(
-        prev.filter((r) => !(r.origenMovimientoId === id && !r.editadoManualmente))
-      )
-    );
-    setMrL1Entradas((prev) =>
-      prev.filter((r) => !(r.origenMovimientoId === id && !r.editadoManualmente))
-    );
-    setMrL5Procesos((prev) =>
-      reindexLibro5Procesos(
-        prev.filter((r) => !(r.origenMovimientoId === id && !r.editadoManualmente))
-      )
-    );
+    setAppccLimpieza(nextAppccLimpieza);
+    setAppccResiduos(nextAppccResiduos);
+    setAeatMateriasPrimas(nextAeatMp);
+    setAeatProductoElaborado(nextAeatPe);
+    setMrL1Entradas(nextMrL1Entradas);
+    setMrL5Procesos(nextMrL5Procesos);
     return true;
   };
 
@@ -1646,217 +1947,319 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const addElaboracion = (
     elabData: Omit<ElaboracionRegistro, 'id' | 'fechaRegistro'>
   ): ElaboracionRegistro => {
-    const newId = `ELAB-${new Date().getFullYear()}-${String(elaboraciones.length + 1).padStart(3, '0')}`;
+    const live = getLiveState();
+    const newId = getNextSeqId(live.elaboraciones, `ELAB-${new Date().getFullYear()}-`, 3);
     const newElab: ElaboracionRegistro = {
       ...elabData,
       id: newId,
       fechaRegistro: new Date().toISOString(),
     };
 
-    setElaboraciones((prev) => [newElab, ...prev]);
+    const nextElabs = [newElab, ...live.elaboraciones];
 
-    // Update origin tank
-    setDepositos((prev) =>
-      prev.map((d) => {
-        if (d.id === elabData.depositoOrigenId) {
-          let newLitros = d.litrosActuales;
-          if (elabData.destinoTipo === 'deposito' && elabData.depositoDestinoId !== d.id) {
-            newLitros = Math.max(0, d.litrosActuales - elabData.cantidadLitros);
-          } else if (elabData.destinoTipo === 'merma_limpieza') {
-            newLitros = Math.max(0, d.litrosActuales - elabData.cantidadLitros);
-          }
-
-          let newEstado = d.estado;
-          if (elabData.operacionRealizada.includes('Crianza')) newEstado = 'Crianza sobre lías';
-          else if (elabData.operacionRealizada.includes('trasiego') || elabData.operacionRealizada.includes('Trasiego'))
-            newEstado = 'Estabilización / Reposo';
-          else if (elabData.operacionRealizada.includes('embotellar') || elabData.operacionRealizada.includes('abrillantado'))
-            newEstado = 'Listo para embotellar';
-
-          return {
-            ...d,
-            litrosActuales: newLitros,
-            estado: newLitros === 0 ? 'Vacío' : newEstado,
-            ultimaOperacion: elabData.operacionRealizada,
-            fechaUltimaOperacion: elabData.fecha,
-          };
+    // Update origin & optional destination tank
+    const nextDepositos = live.depositos.map((d) => {
+      if (d.id === elabData.depositoOrigenId) {
+        let newLitros = d.litrosActuales;
+        if (elabData.destinoTipo === 'deposito' && elabData.depositoDestinoId !== d.id) {
+          newLitros = Math.max(0, d.litrosActuales - elabData.cantidadLitros);
+        } else if (elabData.destinoTipo === 'merma_limpieza') {
+          newLitros = Math.max(0, d.litrosActuales - elabData.cantidadLitros);
         }
 
-        // If transferred to another tank
-        if (elabData.destinoTipo === 'deposito' && elabData.depositoDestinoId === d.id) {
-          const newLitros = Math.min(d.capacidadLitros, d.litrosActuales + elabData.cantidadLitros);
-          return {
-            ...d,
-            litrosActuales: newLitros,
-            anoCosecha: elabData.anada || d.anoCosecha,
-            estado: 'Estabilización / Reposo',
-            ultimaOperacion: `Recepción trasiego desde ${elabData.depositoOrigenId}`,
-            fechaUltimaOperacion: elabData.fecha,
-          };
-        }
+        let newEstado = d.estado;
+        if (elabData.operacionRealizada.includes('Crianza')) newEstado = 'Crianza sobre lías';
+        else if (elabData.operacionRealizada.includes('trasiego') || elabData.operacionRealizada.includes('Trasiego'))
+          newEstado = 'Estabilización / Reposo';
+        else if (elabData.operacionRealizada.includes('embotellar') || elabData.operacionRealizada.includes('abrillantado'))
+          newEstado = 'Listo para embotellar';
 
-        return d;
-      })
-    );
+        return {
+          ...d,
+          litrosActuales: newLitros,
+          estado: newLitros === 0 ? ('Vacío' as const) : newEstado,
+          ultimaOperacion: elabData.operacionRealizada,
+          fechaUltimaOperacion: elabData.fecha,
+        };
+      }
 
-    // APPCC Automático: si es trasiego, desfangado, filtración, remontado o movimiento entre depósitos -> anotar depósito(s), bombas, mangueras, etc.
-    const responsableAppcc = bodegaConfig.responsableTecnico || 'Héctor Pérez Formoso';
-    const autoLd = buildLimpiezaForElaboracion(newElab, responsableAppcc);
-    setAppccLimpieza((prev) => {
-      const nuevos = autoLd.filter(
-        (n) =>
-          !prev.some(
-            (e) =>
-              e.fecha === n.fecha &&
-              e.zonaEquipo.toUpperCase() === n.zonaEquipo.toUpperCase()
-          )
-      );
-      return [...nuevos, ...prev];
+      if (elabData.destinoTipo === 'deposito' && elabData.depositoDestinoId === d.id) {
+        const newLitros = Math.min(d.capacidadLitros, d.litrosActuales + elabData.cantidadLitros);
+        return {
+          ...d,
+          litrosActuales: newLitros,
+          anoCosecha: elabData.anada || d.anoCosecha,
+          estado: 'Estabilización / Reposo' as const,
+          ultimaOperacion: `Recepción trasiego desde ${elabData.depositoOrigenId}`,
+          fechaUltimaOperacion: elabData.fecha,
+        };
+      }
+
+      return d;
     });
 
-    // Trigger AEAT Automático: trasiegos entre depósitos y mermas/pérdidas en Libro de Producto Elaborado
-    if (shouldElaboracionBeInAeat(newElab)) {
-      setAeatProductoElaborado((prev) => {
-        if (prev.some((r) => r.origenMovimientoId === newElab.id)) return prev;
-        const newRow = buildAeatProductoFromElaboracion(newElab, depositos, bodegaConfig);
-        return recalculateProductoElaboradoBalances([...prev, newRow]);
-      });
+    // APPCC Automático
+    const responsableAppcc = live.bodegaConfig.responsableTecnico || 'Héctor Pérez Formoso';
+    const autoLd = buildLimpiezaForElaboracion(newElab, responsableAppcc);
+    const nuevosLd = autoLd.filter(
+      (n) =>
+        !live.appccLimpieza.some(
+          (e) =>
+            e.fecha === n.fecha &&
+            e.zonaEquipo.toUpperCase() === n.zonaEquipo.toUpperCase()
+        )
+    );
+    const nextAppccLimpieza = [...nuevosLd, ...live.appccLimpieza];
+
+    // AEAT Automático using fresh nextDepositos
+    let nextAeatPe = live.aeatProductoElaborado;
+    if (
+      shouldElaboracionBeInAeat(newElab) &&
+      !live.aeatProductoElaborado.some((r) => r.origenMovimientoId === newElab.id)
+    ) {
+      const newRow = buildAeatProductoFromElaboracion(newElab, nextDepositos, live.bodegaConfig);
+      nextAeatPe = recalculateProductoElaboradoBalances([...live.aeatProductoElaborado, newRow]);
     }
 
-    // Trigger Medio Rural Automático: Libros 1, 3, 4 y 5 según operación
-    if (shouldElaboracionGenerateL1Entrada(newElab)) {
-      setMrL1Entradas((prev) => {
-        if (prev.some((r) => r.origenMovimientoId === newElab.id)) return prev;
-        return [...prev, buildMedioRuralL1EntradaFromElab(newElab, depositos)].sort((a, b) =>
-          a.data.localeCompare(b.data)
-        );
-      });
+    // Medio Rural Automático using fresh nextDepositos
+    let nextMrL1Entradas = live.mrL1Entradas;
+    if (
+      shouldElaboracionGenerateL1Entrada(newElab) &&
+      !live.mrL1Entradas.some((r) => r.origenMovimientoId === newElab.id)
+    ) {
+      nextMrL1Entradas = [
+        ...live.mrL1Entradas,
+        buildMedioRuralL1EntradaFromElab(newElab, nextDepositos),
+      ].sort((a, b) => a.data.localeCompare(b.data));
     }
-    if (shouldElaboracionGenerateL1Salida(newElab)) {
-      setMrL1Salidas((prev) => {
-        if (prev.some((r) => r.origenMovimientoId === newElab.id)) return prev;
-        return [...prev, buildMedioRuralL1SalidaFromElab(newElab, depositos)].sort((a, b) =>
-          a.data.localeCompare(b.data)
-        );
-      });
+
+    let nextMrL1Salidas = live.mrL1Salidas;
+    if (
+      shouldElaboracionGenerateL1Salida(newElab) &&
+      !live.mrL1Salidas.some((r) => r.origenMovimientoId === newElab.id)
+    ) {
+      nextMrL1Salidas = [
+        ...live.mrL1Salidas,
+        buildMedioRuralL1SalidaFromElab(newElab, nextDepositos),
+      ].sort((a, b) => a.data.localeCompare(b.data));
     }
-    if (shouldElaboracionBeInLibro3(newElab)) {
-      setMrL3Movimientos((prev) => {
-        if (prev.some((r) => r.origenMovimientoId === newElab.id)) return prev;
-        return [...prev, buildMedioRuralL3FromElaboracion(newElab, bodegaConfig)].sort((a, b) =>
-          a.data.localeCompare(b.data)
-        );
-      });
+
+    let nextMrL3Movimientos = live.mrL3Movimientos;
+    if (
+      shouldElaboracionBeInLibro3(newElab) &&
+      !live.mrL3Movimientos.some((r) => r.origenMovimientoId === newElab.id)
+    ) {
+      nextMrL3Movimientos = [
+        ...live.mrL3Movimientos,
+        buildMedioRuralL3FromElaboracion(newElab, live.bodegaConfig),
+      ].sort((a, b) => a.data.localeCompare(b.data));
     }
-    if (shouldElaboracionBeInLibro4(newElab)) {
-      setMrL4Practicas((prev) => {
-        if (prev.some((r) => r.origenMovimientoId === newElab.id)) return prev;
-        return [...prev, buildMedioRuralL4FromElaboracion(newElab, depositos)].sort((a, b) =>
-          a.data.localeCompare(b.data)
-        );
-      });
+
+    let nextMrL4Practicas = live.mrL4Practicas;
+    if (
+      shouldElaboracionBeInLibro4(newElab) &&
+      !live.mrL4Practicas.some((r) => r.origenMovimientoId === newElab.id)
+    ) {
+      nextMrL4Practicas = [
+        ...live.mrL4Practicas,
+        buildMedioRuralL4FromElaboracion(newElab, nextDepositos),
+      ].sort((a, b) => a.data.localeCompare(b.data));
     }
-    if (shouldElaboracionBeInLibro5(newElab)) {
-      setMrL5Procesos((prev) => {
-        if (prev.some((r) => r.origenMovimientoId === newElab.id)) return prev;
-        return reindexLibro5Procesos([
-          ...prev,
-          buildMedioRuralL5FromElaboracion(newElab, depositos),
-        ]);
-      });
+
+    let nextMrL5Procesos = live.mrL5Procesos;
+    if (
+      shouldElaboracionBeInLibro5(newElab) &&
+      !live.mrL5Procesos.some((r) => r.origenMovimientoId === newElab.id)
+    ) {
+      nextMrL5Procesos = reindexLibro5Procesos([
+        ...live.mrL5Procesos,
+        buildMedioRuralL5FromElaboracion(newElab, nextDepositos),
+      ]);
     }
+
+    currentStateRef.current = {
+      ...live,
+      elaboraciones: nextElabs,
+      depositos: nextDepositos,
+      appccLimpieza: nextAppccLimpieza,
+      aeatProductoElaborado: nextAeatPe,
+      mrL1Entradas: nextMrL1Entradas,
+      mrL1Salidas: nextMrL1Salidas,
+      mrL3Movimientos: nextMrL3Movimientos,
+      mrL4Practicas: nextMrL4Practicas,
+      mrL5Procesos: nextMrL5Procesos,
+    };
+
+    setElaboraciones(nextElabs);
+    setDepositos(nextDepositos);
+    setAppccLimpieza(nextAppccLimpieza);
+    setAeatProductoElaborado(nextAeatPe);
+    setMrL1Entradas(nextMrL1Entradas);
+    setMrL1Salidas(nextMrL1Salidas);
+    setMrL3Movimientos(nextMrL3Movimientos);
+    setMrL4Practicas(nextMrL4Practicas);
+    setMrL5Procesos(nextMrL5Procesos);
+
+    markRecordsDirty('aeat_producto_elaborado', getChangedRecordIds(live.aeatProductoElaborado, nextAeatPe));
+    markRecordsDirty('mr_l1_entradas', getChangedRecordIds(live.mrL1Entradas, nextMrL1Entradas));
+    markRecordsDirty('mr_l1_salidas', getChangedRecordIds(live.mrL1Salidas, nextMrL1Salidas));
+    markRecordsDirty('mr_l3_movimientos', getChangedRecordIds(live.mrL3Movimientos, nextMrL3Movimientos));
+    markRecordsDirty('mr_l4_practicas', getChangedRecordIds(live.mrL4Practicas, nextMrL4Practicas));
+    markRecordsDirty('mr_l5_procesos', getChangedRecordIds(live.mrL5Procesos, nextMrL5Procesos));
 
     return newElab;
   };
 
   const updateElaboracion = (id: string, updated: Partial<ElaboracionRegistro>) => {
-    const nextElabs = elaboraciones.map((el) => (el.id === id ? { ...el, ...updated } : el));
-    setElaboraciones(nextElabs);
-
+    const live = getLiveState();
+    const nextElabs = live.elaboraciones.map((el) => (el.id === id ? { ...el, ...updated } : el));
     const edited = nextElabs.find((el) => el.id === id);
+
+    let nextAeatPe = live.aeatProductoElaborado;
+    let nextMrL1Entradas = live.mrL1Entradas;
+    let nextMrL1Salidas = live.mrL1Salidas;
+    let nextMrL3Movimientos = live.mrL3Movimientos;
+    let nextMrL4Practicas = live.mrL4Practicas;
+    let nextMrL5Procesos = live.mrL5Procesos;
+
     if (edited) {
-      setAeatProductoElaborado((prev) => {
-        const hasRow = prev.some((r) => r.origenMovimientoId === id);
-        if (shouldElaboracionBeInAeat(edited)) {
-          if (!hasRow) {
-            const newRow = buildAeatProductoFromElaboracion(edited, depositos, bodegaConfig);
-            return recalculateProductoElaboradoBalances([...prev, newRow]);
-          }
-          return syncProductoElaboradoWithBodega(
-            prev,
+      const hasRow = live.aeatProductoElaborado.some((r) => r.origenMovimientoId === id);
+      if (shouldElaboracionBeInAeat(edited)) {
+        if (!hasRow) {
+          const newRow = buildAeatProductoFromElaboracion(
+            edited,
+            live.depositos,
+            live.bodegaConfig
+          );
+          nextAeatPe = recalculateProductoElaboradoBalances([...live.aeatProductoElaborado, newRow]);
+        } else {
+          nextAeatPe = syncProductoElaboradoWithBodega(
+            live.aeatProductoElaborado,
             {
-              entradasUva,
+              entradasUva: live.entradasUva,
               elaboraciones: nextElabs,
-              embotellados,
-              salidas,
-              depositos,
-              config: bodegaConfig,
+              embotellados: live.embotellados,
+              salidas: live.salidas,
+              depositos: live.depositos,
+              config: live.bodegaConfig,
             },
             { addMissing: false, updateExisting: true }
           );
         }
-        return recalculateProductoElaboradoBalances(
-          prev.filter((r) => !(r.origenMovimientoId === id && !r.editadoManualmente))
+      } else {
+        nextAeatPe = recalculateProductoElaboradoBalances(
+          live.aeatProductoElaborado.filter(
+            (r) => !(r.origenMovimientoId === id && !r.editadoManualmente)
+          )
         );
-      });
+      }
 
-      // Sync Medio Rural Libros 1, 3, 4 y 5
       const l1Synced = syncMedioRuralLibro1(
-        mrL1Entradas,
-        mrL1Salidas,
-        { entradasUva, elaboraciones: nextElabs, embotellados, depositos },
+        live.mrL1Entradas,
+        live.mrL1Salidas,
+        {
+          entradasUva: live.entradasUva,
+          elaboraciones: nextElabs,
+          embotellados: live.embotellados,
+          depositos: live.depositos,
+        },
         { addMissing: true, updateExisting: true, pruneDeleted: true }
       );
-      setMrL1Entradas(l1Synced.entradas);
-      setMrL1Salidas(l1Synced.salidas);
-      setMrL3Movimientos((prev) =>
-        syncMedioRuralLibro3(
-          prev,
-          { elaboraciones: nextElabs, config: bodegaConfig },
-          { addMissing: true, updateExisting: true, pruneDeleted: true }
-        )
+      nextMrL1Entradas = l1Synced.entradas;
+      nextMrL1Salidas = l1Synced.salidas;
+
+      nextMrL3Movimientos = syncMedioRuralLibro3(
+        live.mrL3Movimientos,
+        { elaboraciones: nextElabs, config: live.bodegaConfig },
+        { addMissing: true, updateExisting: true, pruneDeleted: true }
       );
-      setMrL4Practicas((prev) =>
-        syncMedioRuralLibro4(
-          prev,
-          { elaboraciones: nextElabs, depositos },
-          { addMissing: true, updateExisting: true, pruneDeleted: true }
-        )
+      nextMrL4Practicas = syncMedioRuralLibro4(
+        live.mrL4Practicas,
+        { elaboraciones: nextElabs, depositos: live.depositos },
+        { addMissing: true, updateExisting: true, pruneDeleted: true }
       );
-      setMrL5Procesos((prev) =>
-        syncMedioRuralLibro5(
-          prev,
-          { entradasUva, elaboraciones: nextElabs, depositos },
-          { addMissing: true, updateExisting: true, pruneDeleted: true }
-        )
+      nextMrL5Procesos = syncMedioRuralLibro5(
+        live.mrL5Procesos,
+        {
+          entradasUva: live.entradasUva,
+          elaboraciones: nextElabs,
+          depositos: live.depositos,
+        },
+        { addMissing: true, updateExisting: true, pruneDeleted: true }
       );
+    }
+
+    currentStateRef.current = {
+      ...live,
+      elaboraciones: nextElabs,
+      aeatProductoElaborado: nextAeatPe,
+      mrL1Entradas: nextMrL1Entradas,
+      mrL1Salidas: nextMrL1Salidas,
+      mrL3Movimientos: nextMrL3Movimientos,
+      mrL4Practicas: nextMrL4Practicas,
+      mrL5Procesos: nextMrL5Procesos,
+    };
+
+    setElaboraciones(nextElabs);
+    if (edited) {
+      setAeatProductoElaborado(nextAeatPe);
+      setMrL1Entradas(nextMrL1Entradas);
+      setMrL1Salidas(nextMrL1Salidas);
+      setMrL3Movimientos(nextMrL3Movimientos);
+      setMrL4Practicas(nextMrL4Practicas);
+      setMrL5Procesos(nextMrL5Procesos);
+
+      markRecordsDirty('aeat_producto_elaborado', getChangedRecordIds(live.aeatProductoElaborado, nextAeatPe));
+      markRecordsDirty('mr_l1_entradas', getChangedRecordIds(live.mrL1Entradas, nextMrL1Entradas));
+      markRecordsDirty('mr_l1_salidas', getChangedRecordIds(live.mrL1Salidas, nextMrL1Salidas));
+      markRecordsDirty('mr_l3_movimientos', getChangedRecordIds(live.mrL3Movimientos, nextMrL3Movimientos));
+      markRecordsDirty('mr_l4_practicas', getChangedRecordIds(live.mrL4Practicas, nextMrL4Practicas));
+      markRecordsDirty('mr_l5_procesos', getChangedRecordIds(live.mrL5Procesos, nextMrL5Procesos));
     }
   };
 
   const deleteElaboracion = (id: string): boolean => {
-    setElaboraciones((prev) => prev.filter((el) => el.id !== id));
-    setAeatProductoElaborado((prev) =>
-      recalculateProductoElaboradoBalances(
-        prev.filter((r) => !(r.origenMovimientoId === id && !r.editadoManualmente))
+    const live = getLiveState();
+    const nextElabs = live.elaboraciones.filter((el) => el.id !== id);
+    const nextAeatPe = recalculateProductoElaboradoBalances(
+      live.aeatProductoElaborado.filter(
+        (r) => !(r.origenMovimientoId === id && !r.editadoManualmente)
       )
     );
-    setMrL1Entradas((prev) =>
-      prev.filter((r) => !(r.origenMovimientoId === id && !r.editadoManualmente))
+    const nextMrL1Entradas = live.mrL1Entradas.filter(
+      (r) => !(r.origenMovimientoId === id && !r.editadoManualmente)
     );
-    setMrL1Salidas((prev) =>
-      prev.filter((r) => !(r.origenMovimientoId === id && !r.editadoManualmente))
+    const nextMrL1Salidas = live.mrL1Salidas.filter(
+      (r) => !(r.origenMovimientoId === id && !r.editadoManualmente)
     );
-    setMrL3Movimientos((prev) =>
-      prev.filter((r) => !(r.origenMovimientoId === id && !r.editadoManualmente))
+    const nextMrL3Movimientos = live.mrL3Movimientos.filter(
+      (r) => !(r.origenMovimientoId === id && !r.editadoManualmente)
     );
-    setMrL4Practicas((prev) =>
-      prev.filter((r) => !(r.origenMovimientoId === id && !r.editadoManualmente))
+    const nextMrL4Practicas = live.mrL4Practicas.filter(
+      (r) => !(r.origenMovimientoId === id && !r.editadoManualmente)
     );
-    setMrL5Procesos((prev) =>
-      reindexLibro5Procesos(
-        prev.filter((r) => !(r.origenMovimientoId === id && !r.editadoManualmente))
-      )
+    const nextMrL5Procesos = reindexLibro5Procesos(
+      live.mrL5Procesos.filter((r) => !(r.origenMovimientoId === id && !r.editadoManualmente))
     );
+
+    currentStateRef.current = {
+      ...live,
+      elaboraciones: nextElabs,
+      aeatProductoElaborado: nextAeatPe,
+      mrL1Entradas: nextMrL1Entradas,
+      mrL1Salidas: nextMrL1Salidas,
+      mrL3Movimientos: nextMrL3Movimientos,
+      mrL4Practicas: nextMrL4Practicas,
+      mrL5Procesos: nextMrL5Procesos,
+    };
+
+    setElaboraciones(nextElabs);
+    setAeatProductoElaborado(nextAeatPe);
+    setMrL1Entradas(nextMrL1Entradas);
+    setMrL1Salidas(nextMrL1Salidas);
+    setMrL3Movimientos(nextMrL3Movimientos);
+    setMrL4Practicas(nextMrL4Practicas);
+    setMrL5Procesos(nextMrL5Procesos);
     return true;
   };
 
@@ -1864,8 +2267,8 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const addEmbotellado = (
     embData: Omit<EmbotelladoRegistro, 'id' | 'fechaRegistro' | 'cantidadBotellas075' | 'botellasDisponibles'>
   ): EmbotelladoRegistro => {
-    const newId = `EMB-${new Date().getFullYear()}-${String(embotellados.length + 1).padStart(3, '0')}`;
-    // Automatic bottles 0.75 calculation
+    const live = getLiveState();
+    const newId = getNextSeqId(live.embotellados, `EMB-${new Date().getFullYear()}-`, 3);
     const botellasCalc = Math.floor(embData.cantidadLitros / 0.75);
 
     const newEmb: EmbotelladoRegistro = {
@@ -1876,32 +2279,30 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       fechaRegistro: new Date().toISOString(),
     };
 
-    setEmbotellados((prev) => [newEmb, ...prev]);
+    const nextEmbotellados = [newEmb, ...live.embotellados];
 
     // 1. Discount liters from origin tank
-    setDepositos((prev) =>
-      prev.map((d) => {
-        if (d.id === embData.depositoProcedenciaId) {
-          const rest = Math.max(0, d.litrosActuales - embData.cantidadLitros);
-          return {
-            ...d,
-            litrosActuales: rest,
-            estado: rest === 0 ? 'Vacío' : d.estado,
-            ultimaOperacion: `Embotellado Lote ${embData.lote} (${botellasCalc} bot)`,
-            fechaUltimaOperacion: embData.fecha,
-          };
-        }
-        return d;
-      })
-    );
+    const nextDepositos = live.depositos.map((d) => {
+      if (d.id === embData.depositoProcedenciaId) {
+        const rest = Math.max(0, d.litrosActuales - embData.cantidadLitros);
+        return {
+          ...d,
+          litrosActuales: rest,
+          estado: rest === 0 ? ('Vacío' as const) : d.estado,
+          ultimaOperacion: `Embotellado Lote ${embData.lote} (${botellasCalc} bot)`,
+          fechaUltimaOperacion: embData.fecha,
+        };
+      }
+      return d;
+    });
 
     // 2. Automatically generate supply deductions (movimientos de insumos)
+    const nowTs = Date.now();
     const newSupplyMovements: MovimientoInsumo[] = [];
 
-    // Corks
     if (embData.insumos.tipoCorcho) {
       newSupplyMovements.push({
-        id: `INS-OUT-${Date.now()}-1`,
+        id: `INS-OUT-${nowTs}-1`,
         fecha: embData.fecha,
         tipoInsumo: 'corchos',
         subtipo: embData.insumos.tipoCorcho,
@@ -1913,10 +2314,9 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       });
     }
 
-    // Bottles
     if (embData.insumos.tipoBotella) {
       newSupplyMovements.push({
-        id: `INS-OUT-${Date.now()}-2`,
+        id: `INS-OUT-${nowTs}-2`,
         fecha: embData.fecha,
         tipoInsumo: 'botellas',
         subtipo: embData.insumos.tipoBotella,
@@ -1928,10 +2328,9 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       });
     }
 
-    // Labels (only if labeled = true)
     if (embData.etiquetado && embData.insumos.tipoEtiqueta) {
       newSupplyMovements.push({
-        id: `INS-OUT-${Date.now()}-3`,
+        id: `INS-OUT-${nowTs}-3`,
         fecha: embData.fecha,
         tipoInsumo: 'etiquetas',
         subtipo: embData.insumos.tipoEtiqueta,
@@ -1943,10 +2342,9 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       });
     }
 
-    // Boxes
     if (embData.insumos.cajasUtilizadas && embData.insumos.cajasUtilizadas > 0) {
       newSupplyMovements.push({
-        id: `INS-OUT-${Date.now()}-4`,
+        id: `INS-OUT-${nowTs}-4`,
         fecha: embData.fecha,
         tipoInsumo: 'cajas',
         subtipo: embData.insumos.tipoCaja,
@@ -1958,202 +2356,329 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       });
     }
 
-    if (newSupplyMovements.length > 0) {
-      setInsumosMovimientos((prev) => [...newSupplyMovements, ...prev]);
+    const nextInsumos =
+      newSupplyMovements.length > 0
+        ? [...newSupplyMovements, ...live.insumosMovimientos]
+        : live.insumosMovimientos;
+
+    // APPCC Automático
+    const responsableAppcc = live.bodegaConfig.responsableTecnico || 'Héctor Pérez Formoso';
+    const autoLd = buildLimpiezaForEmbotellado(newEmb, responsableAppcc);
+    const nuevosLd = autoLd.filter(
+      (n) =>
+        !live.appccLimpieza.some(
+          (e) =>
+            e.fecha === n.fecha &&
+            e.zonaEquipo.toUpperCase() === n.zonaEquipo.toUpperCase()
+        )
+    );
+    const nextAppccLimpieza = [...nuevosLd, ...live.appccLimpieza];
+
+    // AEAT Automático
+    let nextAeatPe = live.aeatProductoElaborado;
+    if (!live.aeatProductoElaborado.some((r) => r.origenMovimientoId === newEmb.id)) {
+      const newRow = buildAeatProductoFromEmbotellado(newEmb, live.bodegaConfig);
+      nextAeatPe = recalculateProductoElaboradoBalances([...live.aeatProductoElaborado, newRow]);
     }
 
-    // APPCC Automático: embotellado registra limpieza de llenadora, corchadora, bombas, mangueras, depósito y suelo
-    const responsableAppcc = bodegaConfig.responsableTecnico || 'Héctor Pérez Formoso';
-    const autoLd = buildLimpiezaForEmbotellado(newEmb, responsableAppcc);
-    setAppccLimpieza((prev) => {
-      const nuevos = autoLd.filter(
-        (n) =>
-          !prev.some(
-            (e) =>
-              e.fecha === n.fecha &&
-              e.zonaEquipo.toUpperCase() === n.zonaEquipo.toUpperCase()
-          )
-      );
-      return [...nuevos, ...prev];
-    });
+    // Medio Rural Automático: Libro 1 (Saídas) + Libro 2 (Entradas Embotellados)
+    let nextMrL1Salidas = live.mrL1Salidas;
+    if (!live.mrL1Salidas.some((r) => r.origenMovimientoId === newEmb.id)) {
+      nextMrL1Salidas = [
+        ...live.mrL1Salidas,
+        buildMedioRuralL1SalidaFromEmbotellado(newEmb),
+      ].sort((a, b) => a.data.localeCompare(b.data));
+    }
 
-    // Trigger AEAT Automático: Embotellado en Libro de Producto Elaborado
-    setAeatProductoElaborado((prev) => {
-      if (prev.some((r) => r.origenMovimientoId === newEmb.id)) return prev;
-      const newRow = buildAeatProductoFromEmbotellado(newEmb, bodegaConfig);
-      return recalculateProductoElaboradoBalances([...prev, newRow]);
-    });
+    let nextMrL2Entradas = live.mrL2Entradas;
+    if (!live.mrL2Entradas.some((r) => r.origenEmbotelladoId === newEmb.id)) {
+      nextMrL2Entradas = [
+        ...live.mrL2Entradas,
+        buildMedioRuralL2EntradaFromEmbotellado(newEmb),
+      ].sort((a, b) => a.data.localeCompare(b.data));
+    }
 
-    // Trigger Medio Rural Automático: Libro 1 (Saídas) + Libro 2 (Entradas Embotellados)
-    setMrL1Salidas((prev) => {
-      if (prev.some((r) => r.origenMovimientoId === newEmb.id)) return prev;
-      return [...prev, buildMedioRuralL1SalidaFromEmbotellado(newEmb)].sort((a, b) =>
-        a.data.localeCompare(b.data)
-      );
-    });
-    setMrL2Entradas((prev) => {
-      if (prev.some((r) => r.origenEmbotelladoId === newEmb.id)) return prev;
-      return [...prev, buildMedioRuralL2EntradaFromEmbotellado(newEmb)].sort((a, b) =>
-        a.data.localeCompare(b.data)
-      );
-    });
+    currentStateRef.current = {
+      ...live,
+      embotellados: nextEmbotellados,
+      depositos: nextDepositos,
+      insumosMovimientos: nextInsumos,
+      appccLimpieza: nextAppccLimpieza,
+      aeatProductoElaborado: nextAeatPe,
+      mrL1Salidas: nextMrL1Salidas,
+      mrL2Entradas: nextMrL2Entradas,
+    };
+
+    setEmbotellados(nextEmbotellados);
+    setDepositos(nextDepositos);
+    if (nextInsumos !== live.insumosMovimientos) setInsumosMovimientos(nextInsumos);
+    setAppccLimpieza(nextAppccLimpieza);
+    setAeatProductoElaborado(nextAeatPe);
+    setMrL1Salidas(nextMrL1Salidas);
+    setMrL2Entradas(nextMrL2Entradas);
+
+    markRecordsDirty('aeat_producto_elaborado', getChangedRecordIds(live.aeatProductoElaborado, nextAeatPe));
+    markRecordsDirty('mr_l1_salidas', getChangedRecordIds(live.mrL1Salidas, nextMrL1Salidas));
+    markRecordsDirty('mr_l2_entradas', getChangedRecordIds(live.mrL2Entradas, nextMrL2Entradas));
 
     return newEmb;
   };
 
   const updateEmbotellado = (id: string, updated: Partial<EmbotelladoRegistro>) => {
-    const nextEmbotellados = embotellados.map((emb) => {
+    const live = getLiveState();
+    const nextEmbotellados = live.embotellados.map((emb) => {
       if (emb.id === id) {
         const newLitros = updated.cantidadLitros ?? emb.cantidadLitros;
         const newBotellas = updated.cantidadBotellas075 ?? Math.floor(newLitros / 0.75);
+        const newLote = updated.lote ?? emb.lote;
+        const totalSalidasParaEsteLote = live.salidas
+          .filter((s) => s.lote === newLote || s.embotelladoId === emb.id)
+          .reduce((sum, s) => sum + s.cantidadBotellas, 0);
+        const disponible =
+          updated.botellasDisponibles ?? Math.max(0, newBotellas - totalSalidasParaEsteLote);
         return {
           ...emb,
           ...updated,
           cantidadLitros: newLitros,
           cantidadBotellas075: newBotellas,
+          botellasDisponibles: disponible,
         };
       }
       return emb;
     });
+
+    const nextAeatPe = syncProductoElaboradoWithBodega(
+      live.aeatProductoElaborado,
+      {
+        entradasUva: live.entradasUva,
+        elaboraciones: live.elaboraciones,
+        embotellados: nextEmbotellados,
+        salidas: live.salidas,
+        depositos: live.depositos,
+        config: live.bodegaConfig,
+      },
+      { addMissing: false, updateExisting: true }
+    );
+    const nextMrL1Salidas = syncMedioRuralLibro1(
+      live.mrL1Entradas,
+      live.mrL1Salidas,
+      {
+        entradasUva: live.entradasUva,
+        elaboraciones: live.elaboraciones,
+        embotellados: nextEmbotellados,
+        depositos: live.depositos,
+      },
+      { addMissing: false, updateExisting: true }
+    ).salidas;
+    const nextMrL2Entradas = syncMedioRuralLibro2(
+      live.mrL2Entradas,
+      live.mrL2Salidas,
+      { embotellados: nextEmbotellados, salidas: live.salidas },
+      { addMissing: false, updateExisting: true }
+    ).entradas;
+
+    currentStateRef.current = {
+      ...live,
+      embotellados: nextEmbotellados,
+      aeatProductoElaborado: nextAeatPe,
+      mrL1Salidas: nextMrL1Salidas,
+      mrL2Entradas: nextMrL2Entradas,
+    };
+
     setEmbotellados(nextEmbotellados);
-    setAeatProductoElaborado((prev) =>
-      syncProductoElaboradoWithBodega(
-        prev,
-        {
-          entradasUva,
-          elaboraciones,
-          embotellados: nextEmbotellados,
-          salidas,
-          depositos,
-          config: bodegaConfig,
-        },
-        { addMissing: false, updateExisting: true }
-      )
-    );
-    setMrL1Salidas((prev) =>
-      syncMedioRuralLibro1(
-        mrL1Entradas,
-        prev,
-        { entradasUva, elaboraciones, embotellados: nextEmbotellados, depositos },
-        { addMissing: false, updateExisting: true }
-      ).salidas
-    );
-    setMrL2Entradas((prev) =>
-      syncMedioRuralLibro2(
-        prev,
-        mrL2Salidas,
-        { embotellados: nextEmbotellados, salidas },
-        { addMissing: false, updateExisting: true }
-      ).entradas
-    );
+    setAeatProductoElaborado(nextAeatPe);
+    setMrL1Salidas(nextMrL1Salidas);
+    setMrL2Entradas(nextMrL2Entradas);
+
+    markRecordsDirty('aeat_producto_elaborado', getChangedRecordIds(live.aeatProductoElaborado, nextAeatPe));
+    markRecordsDirty('mr_l1_salidas', getChangedRecordIds(live.mrL1Salidas, nextMrL1Salidas));
+    markRecordsDirty('mr_l2_entradas', getChangedRecordIds(live.mrL2Entradas, nextMrL2Entradas));
   };
 
   const deleteEmbotellado = (id: string): boolean => {
     const check = checkReferentialIntegrity('embotellado', id);
     if (!check.canDelete) return false;
 
-    const emb = embotellados.find((e) => e.id === id);
-    if (emb) {
-      // Revert supply movements for this lot
-      setInsumosMovimientos((prev) => prev.filter((m) => m.embotelladoLoteAsociado !== emb.lote));
+    const live = getLiveState();
+    const emb = live.embotellados.find((e) => e.id === id);
+    let nextInsumos = live.insumosMovimientos;
+    let nextDepositos = live.depositos;
 
-      // Revert liters back to origin tank if it exists
+    if (emb) {
+      nextInsumos = live.insumosMovimientos.filter((m) => m.embotelladoLoteAsociado !== emb.lote);
       if (emb.depositoProcedenciaId) {
-        setDepositos((prev) =>
-          prev.map((d) => {
-            if (d.id === emb.depositoProcedenciaId) {
-              return {
-                ...d,
-                litrosActuales: Math.min(d.capacidadLitros, d.litrosActuales + emb.cantidadLitros),
-              };
-            }
-            return d;
-          })
-        );
+        nextDepositos = live.depositos.map((d) => {
+          if (d.id === emb.depositoProcedenciaId) {
+            return {
+              ...d,
+              litrosActuales: Math.min(d.capacidadLitros, d.litrosActuales + emb.cantidadLitros),
+            };
+          }
+          return d;
+        });
       }
     }
 
-    setEmbotellados((prev) => prev.filter((e) => e.id !== id));
-    setAeatProductoElaborado((prev) =>
-      recalculateProductoElaboradoBalances(
-        prev.filter((r) => !(r.origenMovimientoId === id && !r.editadoManualmente))
+    const nextEmbotellados = live.embotellados.filter((e) => e.id !== id);
+    const nextAeatPe = recalculateProductoElaboradoBalances(
+      live.aeatProductoElaborado.filter(
+        (r) => !(r.origenMovimientoId === id && !r.editadoManualmente)
       )
     );
-    setMrL1Salidas((prev) =>
-      prev.filter((r) => !(r.origenMovimientoId === id && !r.editadoManualmente))
+    const nextMrL1Salidas = live.mrL1Salidas.filter(
+      (r) => !(r.origenMovimientoId === id && !r.editadoManualmente)
     );
-    setMrL2Entradas((prev) =>
-      prev.filter((r) => !(r.origenEmbotelladoId === id && !r.editadoManualmente))
+    const nextMrL2Entradas = live.mrL2Entradas.filter(
+      (r) => !(r.origenEmbotelladoId === id && !r.editadoManualmente)
     );
+
+    currentStateRef.current = {
+      ...live,
+      insumosMovimientos: nextInsumos,
+      depositos: nextDepositos,
+      embotellados: nextEmbotellados,
+      aeatProductoElaborado: nextAeatPe,
+      mrL1Salidas: nextMrL1Salidas,
+      mrL2Entradas: nextMrL2Entradas,
+    };
+
+    if (nextInsumos !== live.insumosMovimientos) setInsumosMovimientos(nextInsumos);
+    if (nextDepositos !== live.depositos) setDepositos(nextDepositos);
+    setEmbotellados(nextEmbotellados);
+    setAeatProductoElaborado(nextAeatPe);
+    setMrL1Salidas(nextMrL1Salidas);
+    setMrL2Entradas(nextMrL2Entradas);
     return true;
   };
 
   // CRUD: Salidas
   const addSalida = (salidaData: Omit<SalidaRegistro, 'id' | 'fechaRegistro'>): SalidaRegistro => {
-    const newId = `SAL-${new Date().getFullYear()}-${String(salidas.length + 1).padStart(3, '0')}`;
+    const live = getLiveState();
+    const newId = getNextSeqId(live.salidas, `SAL-${new Date().getFullYear()}-`, 3);
     const newSalida: SalidaRegistro = {
       ...salidaData,
       id: newId,
       fechaRegistro: new Date().toISOString(),
     };
 
-    setSalidas((prev) => [newSalida, ...prev]);
+    const nextSalidas = [newSalida, ...live.salidas];
 
-    // Trigger AEAT Automático: Salida / Expedición en Libro de Producto Elaborado
-    setAeatProductoElaborado((prev) => {
-      if (prev.some((r) => r.origenMovimientoId === newSalida.id)) return prev;
-      const newRow = buildAeatProductoFromSalida(newSalida, embotellados);
-      return recalculateProductoElaboradoBalances([...prev, newRow]);
+    // Update available bottles on embotellados immediately using fresh nextSalidas
+    const nextEmbotellados = live.embotellados.map((emb) => {
+      const totalSalidasParaEsteLote = nextSalidas
+        .filter((s) => s.lote === emb.lote || s.embotelladoId === emb.id)
+        .reduce((sum, s) => sum + s.cantidadBotellas, 0);
+      const disponible = Math.max(0, emb.cantidadBotellas075 - totalSalidasParaEsteLote);
+      return emb.botellasDisponibles === disponible
+        ? emb
+        : { ...emb, botellasDisponibles: disponible };
     });
+
+    // Trigger AEAT Automático using fresh embotellados
+    let nextAeatPe = live.aeatProductoElaborado;
+    if (!live.aeatProductoElaborado.some((r) => r.origenMovimientoId === newSalida.id)) {
+      const newRow = buildAeatProductoFromSalida(newSalida, nextEmbotellados);
+      nextAeatPe = recalculateProductoElaboradoBalances([...live.aeatProductoElaborado, newRow]);
+    }
 
     // Trigger Medio Rural Automático: Libro 2 Saídas Embotellados
-    setMrL2Salidas((prev) => {
-      if (prev.some((r) => r.origenSalidaId === newSalida.id)) return prev;
-      return [...prev, buildMedioRuralL2SalidaFromSalida(newSalida)].sort((a, b) =>
-        a.data.localeCompare(b.data)
+    let nextMrL2Salidas = live.mrL2Salidas;
+    if (!live.mrL2Salidas.some((r) => r.origenSalidaId === newSalida.id)) {
+      nextMrL2Salidas = [...live.mrL2Salidas, buildMedioRuralL2SalidaFromSalida(newSalida)].sort(
+        (a, b) => a.data.localeCompare(b.data)
       );
-    });
+    }
+
+    currentStateRef.current = {
+      ...live,
+      salidas: nextSalidas,
+      embotellados: nextEmbotellados,
+      aeatProductoElaborado: nextAeatPe,
+      mrL2Salidas: nextMrL2Salidas,
+    };
+
+    setSalidas(nextSalidas);
+    setEmbotellados(nextEmbotellados);
+    setAeatProductoElaborado(nextAeatPe);
+    setMrL2Salidas(nextMrL2Salidas);
+
+    markRecordsDirty('aeat_producto_elaborado', getChangedRecordIds(live.aeatProductoElaborado, nextAeatPe));
+    markRecordsDirty('mr_l2_salidas', getChangedRecordIds(live.mrL2Salidas, nextMrL2Salidas));
 
     return newSalida;
   };
 
   const updateSalida = (id: string, updated: Partial<SalidaRegistro>) => {
-    const nextSalidas = salidas.map((s) => (s.id === id ? { ...s, ...updated } : s));
+    const live = getLiveState();
+    const nextSalidas = live.salidas.map((s) => (s.id === id ? { ...s, ...updated } : s));
+    const nextEmbotellados = live.embotellados.map((emb) => {
+      const totalSalidasParaEsteLote = nextSalidas
+        .filter((s) => s.lote === emb.lote || s.embotelladoId === emb.id)
+        .reduce((sum, s) => sum + s.cantidadBotellas, 0);
+      const disponible = Math.max(0, emb.cantidadBotellas075 - totalSalidasParaEsteLote);
+      return emb.botellasDisponibles === disponible
+        ? emb
+        : { ...emb, botellasDisponibles: disponible };
+    });
+
+    const nextAeatPe = syncProductoElaboradoWithBodega(
+      live.aeatProductoElaborado,
+      {
+        entradasUva: live.entradasUva,
+        elaboraciones: live.elaboraciones,
+        embotellados: nextEmbotellados,
+        salidas: nextSalidas,
+        depositos: live.depositos,
+        config: live.bodegaConfig,
+      },
+      { addMissing: false, updateExisting: true }
+    );
+    const nextMrL2Salidas = syncMedioRuralLibro2(
+      live.mrL2Entradas,
+      live.mrL2Salidas,
+      { embotellados: nextEmbotellados, salidas: nextSalidas },
+      { addMissing: false, updateExisting: true }
+    ).salidas;
+
+    currentStateRef.current = {
+      ...live,
+      salidas: nextSalidas,
+      embotellados: nextEmbotellados,
+      aeatProductoElaborado: nextAeatPe,
+      mrL2Salidas: nextMrL2Salidas,
+    };
+
     setSalidas(nextSalidas);
-    setAeatProductoElaborado((prev) =>
-      syncProductoElaboradoWithBodega(
-        prev,
-        {
-          entradasUva,
-          elaboraciones,
-          embotellados,
-          salidas: nextSalidas,
-          depositos,
-          config: bodegaConfig,
-        },
-        { addMissing: false, updateExisting: true }
-      )
-    );
-    setMrL2Salidas((prev) =>
-      syncMedioRuralLibro2(
-        mrL2Entradas,
-        prev,
-        { embotellados, salidas: nextSalidas },
-        { addMissing: false, updateExisting: true }
-      ).salidas
-    );
+    setEmbotellados(nextEmbotellados);
+    setAeatProductoElaborado(nextAeatPe);
+    setMrL2Salidas(nextMrL2Salidas);
+
+    markRecordsDirty('aeat_producto_elaborado', getChangedRecordIds(live.aeatProductoElaborado, nextAeatPe));
+    markRecordsDirty('mr_l2_salidas', getChangedRecordIds(live.mrL2Salidas, nextMrL2Salidas));
   };
 
   const deleteSalida = (id: string): boolean => {
-    setSalidas((prev) => prev.filter((s) => s.id !== id));
-    setAeatProductoElaborado((prev) =>
-      recalculateProductoElaboradoBalances(
-        prev.filter((r) => !(r.origenMovimientoId === id && !r.editadoManualmente))
+    const live = getLiveState();
+    const nextSalidas = live.salidas.filter((s) => s.id !== id);
+    const nextAeatPe = recalculateProductoElaboradoBalances(
+      live.aeatProductoElaborado.filter(
+        (r) => !(r.origenMovimientoId === id && !r.editadoManualmente)
       )
     );
-    setMrL2Salidas((prev) =>
-      prev.filter((r) => !(r.origenSalidaId === id && !r.editadoManualmente))
+    const nextMrL2Salidas = live.mrL2Salidas.filter(
+      (r) => !(r.origenSalidaId === id && !r.editadoManualmente)
     );
+
+    currentStateRef.current = {
+      ...live,
+      salidas: nextSalidas,
+      aeatProductoElaborado: nextAeatPe,
+      mrL2Salidas: nextMrL2Salidas,
+    };
+
+    setSalidas(nextSalidas);
+    setAeatProductoElaborado(nextAeatPe);
+    setMrL2Salidas(nextMrL2Salidas);
     return true;
   };
 
@@ -2544,17 +3069,21 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const syncAeatMateriasPrimasFromVendimia = (): number => {
+    const live = getLiveState();
     const next = syncMateriasPrimasWithEntradas(
-      aeatMateriasPrimas,
-      entradasUva,
-      bodegaConfig,
+      live.aeatMateriasPrimas,
+      live.entradasUva,
+      live.bodegaConfig,
       {
         addMissing: true,
         updateExisting: true,
       }
     );
-    const addedCount = Math.max(0, next.length - aeatMateriasPrimas.length);
+    const addedCount = Math.max(0, next.length - live.aeatMateriasPrimas.length);
+    const changedIds = getChangedRecordIds(live.aeatMateriasPrimas, next);
+    currentStateRef.current = { ...live, aeatMateriasPrimas: next };
     setAeatMateriasPrimas(next);
+    markRecordsDirty('aeat_materias_primas', changedIds);
     return addedCount;
   };
 
@@ -2593,20 +3122,24 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const syncAeatProductoElaboradoFromBodega = (): number => {
+    const live = getLiveState();
     const next = syncProductoElaboradoWithBodega(
-      aeatProductoElaborado,
+      live.aeatProductoElaborado,
       {
-        entradasUva,
-        elaboraciones,
-        embotellados,
-        salidas,
-        depositos,
-        config: bodegaConfig,
+        entradasUva: live.entradasUva,
+        elaboraciones: live.elaboraciones,
+        embotellados: live.embotellados,
+        salidas: live.salidas,
+        depositos: live.depositos,
+        config: live.bodegaConfig,
       },
       { addMissing: true, updateExisting: true }
     );
-    const addedCount = Math.max(0, next.length - aeatProductoElaborado.length);
+    const addedCount = Math.max(0, next.length - live.aeatProductoElaborado.length);
+    const changedIds = getChangedRecordIds(live.aeatProductoElaborado, next);
+    currentStateRef.current = { ...live, aeatProductoElaborado: next };
     setAeatProductoElaborado(next);
+    markRecordsDirty('aeat_producto_elaborado', changedIds);
     return addedCount;
   };
 
@@ -2832,80 +3365,120 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const syncMedioRuralLibro = (libro: 1 | 2 | 3 | 4 | 5): number => {
+    const live = getLiveState();
     if (libro === 1) {
       const next = syncMedioRuralLibro1(
-        mrL1Entradas,
-        mrL1Salidas,
-        { entradasUva, elaboraciones, embotellados, depositos },
+        live.mrL1Entradas,
+        live.mrL1Salidas,
+        {
+          entradasUva: live.entradasUva,
+          elaboraciones: live.elaboraciones,
+          embotellados: live.embotellados,
+          depositos: live.depositos,
+        },
         { addMissing: true, updateExisting: true }
       );
       const added =
-        Math.max(0, next.entradas.length - mrL1Entradas.length) +
-        Math.max(0, next.salidas.length - mrL1Salidas.length);
+        Math.max(0, next.entradas.length - live.mrL1Entradas.length) +
+        Math.max(0, next.salidas.length - live.mrL1Salidas.length);
+      const changedEnt = getChangedRecordIds(live.mrL1Entradas, next.entradas);
+      const changedSal = getChangedRecordIds(live.mrL1Salidas, next.salidas);
+      currentStateRef.current = {
+        ...live,
+        mrL1Entradas: next.entradas,
+        mrL1Salidas: next.salidas,
+      };
       setMrL1Entradas(next.entradas);
       setMrL1Salidas(next.salidas);
+      markRecordsDirty('mr_l1_entradas', changedEnt);
+      markRecordsDirty('mr_l1_salidas', changedSal);
       return added;
     }
     if (libro === 2) {
       const next = syncMedioRuralLibro2(
-        mrL2Entradas,
-        mrL2Salidas,
-        { embotellados, salidas },
+        live.mrL2Entradas,
+        live.mrL2Salidas,
+        { embotellados: live.embotellados, salidas: live.salidas },
         { addMissing: true, updateExisting: true }
       );
       const added =
-        Math.max(0, next.entradas.length - mrL2Entradas.length) +
-        Math.max(0, next.salidas.length - mrL2Salidas.length);
+        Math.max(0, next.entradas.length - live.mrL2Entradas.length) +
+        Math.max(0, next.salidas.length - live.mrL2Salidas.length);
+      const changedEnt = getChangedRecordIds(live.mrL2Entradas, next.entradas);
+      const changedSal = getChangedRecordIds(live.mrL2Salidas, next.salidas);
+      currentStateRef.current = {
+        ...live,
+        mrL2Entradas: next.entradas,
+        mrL2Salidas: next.salidas,
+      };
       setMrL2Entradas(next.entradas);
       setMrL2Salidas(next.salidas);
+      markRecordsDirty('mr_l2_entradas', changedEnt);
+      markRecordsDirty('mr_l2_salidas', changedSal);
       return added;
     }
     if (libro === 3) {
       const next = syncMedioRuralLibro3(
-        mrL3Movimientos,
-        { elaboraciones, config: bodegaConfig },
+        live.mrL3Movimientos,
+        { elaboraciones: live.elaboraciones, config: live.bodegaConfig },
         { addMissing: true, updateExisting: true }
       );
-      const added = Math.max(0, next.length - mrL3Movimientos.length);
+      const added = Math.max(0, next.length - live.mrL3Movimientos.length);
+      const changed = getChangedRecordIds(live.mrL3Movimientos, next);
+      currentStateRef.current = { ...live, mrL3Movimientos: next };
       setMrL3Movimientos(next);
+      markRecordsDirty('mr_l3_movimientos', changed);
       return added;
     }
     if (libro === 4) {
       const next = syncMedioRuralLibro4(
-        mrL4Practicas,
-        { elaboraciones, depositos },
+        live.mrL4Practicas,
+        { elaboraciones: live.elaboraciones, depositos: live.depositos },
         { addMissing: true, updateExisting: true }
       );
-      const added = Math.max(0, next.length - mrL4Practicas.length);
+      const added = Math.max(0, next.length - live.mrL4Practicas.length);
+      const changed = getChangedRecordIds(live.mrL4Practicas, next);
+      currentStateRef.current = { ...live, mrL4Practicas: next };
       setMrL4Practicas(next);
+      markRecordsDirty('mr_l4_practicas', changed);
       return added;
     }
     const next = syncMedioRuralLibro5(
-      mrL5Procesos,
-      { entradasUva, elaboraciones, depositos },
+      live.mrL5Procesos,
+      {
+        entradasUva: live.entradasUva,
+        elaboraciones: live.elaboraciones,
+        depositos: live.depositos,
+      },
       { addMissing: true, updateExisting: true }
     );
-    const added = Math.max(0, next.length - mrL5Procesos.length);
+    const added = Math.max(0, next.length - live.mrL5Procesos.length);
+    const changed = getChangedRecordIds(live.mrL5Procesos, next);
+    currentStateRef.current = { ...live, mrL5Procesos: next };
     setMrL5Procesos(next);
+    markRecordsDirty('mr_l5_procesos', changed);
     return added;
   };
 
   // ---------------- DECLARACIONES FOGGA (MR441B) E INFOVI (AICA) ----------------
   const upsertFoggaDeclaracion = (dec: FoggaMr441bDeclaracion): FoggaMr441bDeclaracion => {
-    setFoggaDeclaraciones((prev) => {
-      const idx = prev.findIndex((item) => item.id === dec.id);
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = dec;
-        return copy;
-      }
-      return [dec, ...prev].sort((a, b) => b.campanaInicio - a.campanaInicio);
-    });
+    const live = getLiveState();
+    const idx = live.foggaDeclaraciones.findIndex((item) => item.id === dec.id);
+    const nextFogga =
+      idx >= 0
+        ? live.foggaDeclaraciones.map((item, i) => (i === idx ? dec : item))
+        : [dec, ...live.foggaDeclaraciones].sort((a, b) => b.campanaInicio - a.campanaInicio);
+    currentStateRef.current = { ...live, foggaDeclaraciones: nextFogga };
+    setFoggaDeclaraciones(nextFogga);
+    markRecordsDirty('fogga_declaraciones', [dec.id]);
     return dec;
   };
 
   const deleteFoggaDeclaracion = (id: string) => {
-    setFoggaDeclaraciones((prev) => prev.filter((item) => item.id !== id));
+    const live = getLiveState();
+    const nextFogga = live.foggaDeclaraciones.filter((item) => item.id !== id);
+    currentStateRef.current = { ...live, foggaDeclaraciones: nextFogga };
+    setFoggaDeclaraciones(nextFogga);
   };
 
   const confirmarFoggaPresentada = (
@@ -2913,29 +3486,34 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     numeroEntrada?: string,
     fechaPresentacion?: string
   ) => {
-    const today = fechaPresentacion || new Date().toISOString().slice(0, 10);
-    setFoggaDeclaraciones((prev) => {
-      const existing = prev.find((d) => d.campanaInicio === campanaInicio);
-      if (existing) {
-        return prev.map((d) =>
-          d.campanaInicio === campanaInicio
-            ? {
-                ...d,
-                estado: 'presentada',
-                confirmadaPresentada: true,
-                fechaPresentacion: d.fechaPresentacion || today,
-                numeroEntrada: numeroEntrada || d.numeroEntrada,
-              }
-            : d
-        );
-      }
+    const today = fechaPresentacion || getLocalIsoDate();
+    const live = getLiveState();
+    const existing = live.foggaDeclaraciones.find((d) => d.campanaInicio === campanaInicio);
+    let targetId: string;
+    let nextFogga: FoggaMr441bDeclaracion[];
+
+    if (existing) {
+      targetId = existing.id;
+      nextFogga = live.foggaDeclaraciones.map((d) =>
+        d.campanaInicio === campanaInicio
+          ? {
+              ...d,
+              estado: 'presentada' as const,
+              confirmadaPresentada: true,
+              fechaPresentacion: d.fechaPresentacion || today,
+              numeroEntrada: numeroEntrada || d.numeroEntrada,
+            }
+          : d
+      );
+    } else {
       const { declaracion } = generateFoggaDraftFromVendimia(campanaInicio, {
-        entradasUva,
-        parcelas,
-        bodegaConfig,
-        existingFogga: prev,
+        entradasUva: live.entradasUva,
+        parcelas: live.parcelas,
+        bodegaConfig: live.bodegaConfig,
+        existingFogga: live.foggaDeclaraciones,
       });
-      return [
+      targetId = declaracion.id;
+      nextFogga = [
         {
           ...declaracion,
           estado: 'presentada' as const,
@@ -2943,63 +3521,75 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           fechaPresentacion: today,
           numeroEntrada: numeroEntrada || declaracion.numeroEntrada,
         },
-        ...prev,
+        ...live.foggaDeclaraciones,
       ].sort((a, b) => b.campanaInicio - a.campanaInicio);
-    });
+    }
+
+    currentStateRef.current = { ...live, foggaDeclaraciones: nextFogga };
+    setFoggaDeclaraciones(nextFogga);
+    markRecordsDirty('fogga_declaraciones', [targetId]);
   };
 
   const upsertInfoviDeclaracion = (dec: InfoviDeclaracion): InfoviDeclaracion => {
-    setInfoviDeclaraciones((prev) => {
-      const idx = prev.findIndex((item) => item.id === dec.id);
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = dec;
-        return copy;
-      }
-      return [dec, ...prev].sort((a, b) => {
-        if (b.campanaInicio !== a.campanaInicio) return b.campanaInicio - a.campanaInicio;
-        return a.mes === 'JULIO' ? -1 : 1;
-      });
-    });
+    const live = getLiveState();
+    const idx = live.infoviDeclaraciones.findIndex((item) => item.id === dec.id);
+    const nextInfovi =
+      idx >= 0
+        ? live.infoviDeclaraciones.map((item, i) => (i === idx ? dec : item))
+        : [dec, ...live.infoviDeclaraciones].sort((a, b) => {
+            if (b.campanaInicio !== a.campanaInicio) return b.campanaInicio - a.campanaInicio;
+            return a.mes === 'JULIO' ? -1 : 1;
+          });
+    currentStateRef.current = { ...live, infoviDeclaraciones: nextInfovi };
+    setInfoviDeclaraciones(nextInfovi);
+    markRecordsDirty('infovi_declaraciones', [dec.id]);
     return dec;
   };
 
   const deleteInfoviDeclaracion = (id: string) => {
-    setInfoviDeclaraciones((prev) => prev.filter((item) => item.id !== id));
+    const live = getLiveState();
+    const nextInfovi = live.infoviDeclaraciones.filter((item) => item.id !== id);
+    currentStateRef.current = { ...live, infoviDeclaraciones: nextInfovi };
+    setInfoviDeclaraciones(nextInfovi);
   };
 
   const confirmarInfoviPresentada = (campanaInicio: number, mes: InfoviMesPeriodo) => {
-    const today = new Date().toISOString().slice(0, 10);
-    setInfoviDeclaraciones((prev) => {
-      const existing = prev.find(
-        (d) => d.campanaInicio === campanaInicio && d.mes === mes
+    const today = getLocalIsoDate();
+    const live = getLiveState();
+    const existing = live.infoviDeclaraciones.find(
+      (d) => d.campanaInicio === campanaInicio && d.mes === mes
+    );
+    let targetId: string;
+    let nextInfovi: InfoviDeclaracion[];
+
+    if (existing) {
+      targetId = existing.id;
+      nextInfovi = live.infoviDeclaraciones.map((d) =>
+        d.id === existing.id
+          ? {
+              ...d,
+              estado: 'presentada' as const,
+              estadoInfovi: 'CERRADA' as const,
+              cerradoPor: d.cerradoPor || 'INSTALACIÓN',
+              confirmadaPresentada: true,
+              fechaUltGrabacion: d.fechaUltGrabacion || today,
+              fechaRecepcion: d.fechaRecepcion || today,
+            }
+          : d
       );
-      if (existing) {
-        return prev.map((d) =>
-          d.id === existing.id
-            ? {
-                ...d,
-                estado: 'presentada',
-                estadoInfovi: 'CERRADA',
-                cerradoPor: d.cerradoPor || 'INSTALACIÓN',
-                confirmadaPresentada: true,
-                fechaUltGrabacion: d.fechaUltGrabacion || today,
-                fechaRecepcion: d.fechaRecepcion || today,
-              }
-            : d
-        );
-      }
+    } else {
       const { declaracion } = generateInfoviDraftFromWinery(campanaInicio, mes, {
-        entradasUva,
-        elaboraciones,
-        embotellados,
-        salidas,
-        depositos,
-        parcelas,
-        bodegaConfig,
-        existingInfovi: prev,
+        entradasUva: live.entradasUva,
+        elaboraciones: live.elaboraciones,
+        embotellados: live.embotellados,
+        salidas: live.salidas,
+        depositos: live.depositos,
+        parcelas: live.parcelas,
+        bodegaConfig: live.bodegaConfig,
+        existingInfovi: live.infoviDeclaraciones,
       });
-      return [
+      targetId = declaracion.id;
+      nextInfovi = [
         {
           ...declaracion,
           estado: 'presentada' as const,
@@ -3009,12 +3599,16 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           fechaUltGrabacion: today,
           fechaRecepcion: today,
         },
-        ...prev,
+        ...live.infoviDeclaraciones,
       ].sort((a, b) => {
         if (b.campanaInicio !== a.campanaInicio) return b.campanaInicio - a.campanaInicio;
         return a.mes === 'JULIO' ? -1 : 1;
       });
-    });
+    }
+
+    currentStateRef.current = { ...live, infoviDeclaraciones: nextInfovi };
+    setInfoviDeclaraciones(nextInfovi);
+    markRecordsDirty('infovi_declaraciones', [targetId]);
   };
 
   const resetFloorPlanPositions = () => {
