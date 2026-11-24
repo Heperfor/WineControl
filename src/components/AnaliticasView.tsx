@@ -18,6 +18,7 @@ import {
   parseAnaliticaExcelBuffer,
   ParsedAnaliticaRow,
 } from '../utils/analiticaExcelParser';
+import { getLocalIsoDate } from '../utils/dateUtils';
 
 interface AnaliticasViewProps {
   preselectedDepositoId?: string;
@@ -75,7 +76,7 @@ export const AnaliticasView: React.FC<AnaliticasViewProps> = ({
     observaciones: string;
     parametros: ParametroAnalitica[];
   }>({
-    fecha: new Date().toISOString().slice(0, 10),
+    fecha: getLocalIsoDate(),
     muestra: '',
     depositoId: preselectedDepositoId || '',
     vinoNombre: '',
@@ -243,7 +244,7 @@ export const AnaliticasView: React.FC<AnaliticasViewProps> = ({
     const baseDep = depositos.find((d) => d.id === targetDepId);
     setEditingId(null);
     setFormState({
-      fecha: new Date().toISOString().slice(0, 10),
+      fecha: getLocalIsoDate(),
       muestra: '',
       depositoId: baseDep?.id || '',
       vinoNombre: presetWineName || baseDep?.vinoNombre || '',
@@ -398,7 +399,7 @@ export const AnaliticasView: React.FC<AnaliticasViewProps> = ({
           <div className="w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
             <FileSpreadsheet className="w-6 h-6" />
           </div>
-          <div className="text-left sm:text-left text-center">
+          <div className="text-center sm:text-left">
             <div className="text-sm font-bold text-stone-900">
               Arrastra aquí tu archivo Excel (.xlsx, .xls o .csv) o pulsa para seleccionarlo
             </div>

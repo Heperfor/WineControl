@@ -34,6 +34,7 @@ import {
 } from '../utils/foggaInfoviAutomation';
 import { exportInfoviPDF } from '../utils/foggaInfoviExportUtils';
 import { SUPABASE_SQL_FOGGA_INFOVI } from './FoggaView';
+import { getLocalIsoDate } from '../utils/dateUtils';
 
 interface InfoviViewProps {
   initialPeriod?: { campanaInicio: number; mes: InfoviMesPeriodo };
@@ -161,7 +162,7 @@ export const InfoviView: React.FC<InfoviViewProps> = ({ initialPeriod }) => {
   }, [selectedCampana, selectedMes, infoviDeclaraciones, autoCalc]);
 
   const bounds = getInfoviPeriodBounds(selectedCampana, selectedMes);
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = getLocalIsoDate();
   const isAntesDeAperturaPlazo = todayIso < bounds.filingOpen;
 
   const showNotice = (msg: string) => {
@@ -184,7 +185,7 @@ export const InfoviView: React.FC<InfoviViewProps> = ({ initialPeriod }) => {
       );
       return;
     }
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalIsoDate();
     const next: InfoviDeclaracion = {
       ...draft,
       estado:

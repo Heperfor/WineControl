@@ -98,7 +98,7 @@ export const ParcelasView: React.FC<ParcelasViewProps> = ({
     setFormData({
       nombre: p.nombre,
       paraje: p.paraje,
-      superficieM2: p.superficieM2 || (p as any).superficieHa * 10000 || 5000,
+      superficieM2: p.superficieM2 || (p.superficieHa ? p.superficieHa * 10000 : 0) || 5000,
       totalCepas: inferredTotalCepas,
       marcoPlantacion: p.marcoPlantacion || '1 x 1.8 m',
       altitudM: p.altitudM,
@@ -161,9 +161,15 @@ export const ParcelasView: React.FC<ParcelasViewProps> = ({
     });
   };
 
-  const handleVarietyChange = (index: number, field: keyof VariedadPlantada, value: any) => {
+  const handleVarietyChange = (
+    index: number,
+    field: keyof VariedadPlantada,
+    value: string | number
+  ) => {
     const updated = [...formData.variedadesPlantadas];
-    if (field === 'porcentajeEstimado') {
+    if (field === 'variedad') {
+      updated[index] = { ...updated[index], variedad: String(value) };
+    } else if (field === 'porcentajeEstimado') {
       const pct = Math.max(0, Number(value) || 0);
       updated[index] = {
         ...updated[index],
@@ -173,8 +179,8 @@ export const ParcelasView: React.FC<ParcelasViewProps> = ({
             ? Math.round((formData.totalCepas * pct) / 100)
             : updated[index].cepasAprox,
       };
-    } else {
-      updated[index] = { ...updated[index], [field]: value };
+    } else if (field === 'cepasAprox') {
+      updated[index] = { ...updated[index], cepasAprox: Math.max(0, Number(value) || 0) };
     }
     setFormData({ ...formData, variedadesPlantadas: updated });
   };
@@ -280,7 +286,7 @@ export const ParcelasView: React.FC<ParcelasViewProps> = ({
             .filter((e) => e.parcelaId === parcela.id)
             .reduce((sum, e) => sum + e.kgTotales, 0);
 
-          const supM2 = parcela.superficieM2 || ((parcela as any).superficieHa ? (parcela as any).superficieHa * 10000 : 0);
+          const supM2 = parcela.superficieM2 || (parcela.superficieHa ? parcela.superficieHa * 10000 : 0);
 
           return (
             <div

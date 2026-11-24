@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
+  BellRing,
   Building2,
   CheckCircle2,
   CloudOff,
@@ -14,10 +15,14 @@ import {
 import { useWinery } from '../context/WineryContext';
 import { BodegaConfig } from '../types/winery';
 import { TabId } from './NavigationTabs';
+import { getLocalIsoDate } from '../utils/dateUtils';
+import { getPendingOfficialDeadlines } from '../utils/foggaInfoviAutomation';
 
 interface NavbarProps {
   activeTab: TabId;
   onBackHome: () => void;
+  isAlertsCollapsed?: boolean;
+  onToggleAlerts?: () => void;
 }
 
 const TAB_TITLES: Record<TabId, string> = {
@@ -42,6 +47,8 @@ const TAB_TITLES: Record<TabId, string> = {
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   onBackHome,
+  isAlertsCollapsed = false,
+  onToggleAlerts,
 }) => {
   const {
     bodegaConfig,
@@ -53,7 +60,15 @@ export const Navbar: React.FC<NavbarProps> = ({
     syncError,
     isSupabaseReady,
     syncWithCloud,
+    foggaDeclaraciones,
+    infoviDeclaraciones,
   } = useWinery();
+
+  const pendingAlerts = useMemo(
+    () => getPendingOfficialDeadlines(foggaDeclaraciones, infoviDeclaraciones),
+    [foggaDeclaraciones, infoviDeclaraciones]
+  );
+  const hasVencidoAlert = pendingAlerts.some((a) => a.urgencia === 'vencido');
 
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [tempConfig, setTempConfig] = useState<BodegaConfig>(bodegaConfig);
@@ -77,7 +92,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `CopiaSeguridad_Bodega_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `CopiaSeguridad_Bodega_${getLocalIsoDate()}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -142,34 +157,34 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <>
       <header className="bg-stone-900 border-b border-stone-800 text-stone-100 sticky top-0 z-40 shadow-md no-print">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14 lg:h-16 gap-2">
+        <div className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-14 lg:h-16 gap-1.5 sm:gap-2">
             {/* Left Zone: Back button on subviews (mobile & desktop) OR Brand lockup */}
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
               {isSubView ? (
                 <button
                   onClick={onBackHome}
-                  className="min-w-[40px] min-h-[40px] lg:min-h-[38px] -ml-1 lg:ml-0 lg:px-3 flex items-center justify-center gap-1.5 rounded-xl text-amber-200 hover:bg-stone-800 lg:bg-stone-800/80 lg:border lg:border-stone-700 active:scale-95 transition-all cursor-pointer shrink-0"
+                  className="w-8 h-8 sm:w-9 sm:h-9 lg:w-auto lg:min-h-[38px] lg:px-3 flex items-center justify-center gap-1.5 rounded-xl text-amber-200 hover:bg-stone-800 lg:bg-stone-800/80 lg:border lg:border-stone-700 active:scale-95 transition-all cursor-pointer shrink-0"
                   aria-label="Volver al inicio"
                 >
-                  <ArrowLeft className="w-5 h-5 lg:w-4 lg:h-4" />
+                  <ArrowLeft className="w-4 h-4" />
                   <span className="hidden lg:inline text-xs font-semibold">Inicio</span>
                 </button>
               ) : null}
 
               <div
                 onClick={onBackHome}
-                className={`w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-gradient-to-br from-rose-900 to-rose-700 flex items-center justify-center text-amber-300 shadow-inner border border-rose-600/30 shrink-0 cursor-pointer ${
+                className={`w-8 h-8 sm:w-9 sm:h-9 lg:w-10 lg:h-10 rounded-xl bg-gradient-to-br from-rose-900 to-rose-700 flex items-center justify-center text-amber-300 shadow-inner border border-rose-600/30 shrink-0 cursor-pointer ${
                   isSubView ? 'hidden lg:flex' : 'flex'
                 }`}
               >
-                <Grape className="w-5 h-5 lg:w-6 lg:h-6" />
+                <Grape className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6" />
               </div>
 
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 {/* Mobile title when inside subview */}
                 {isSubView ? (
-                  <div className="lg:hidden flex flex-col">
+                  <div className="lg:hidden flex flex-col min-w-0">
                     <span className="font-serif-wine text-sm sm:text-base font-bold tracking-wide text-amber-200 truncate">
                       {TAB_TITLES[activeTab]}
                     </span>
@@ -180,8 +195,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                 ) : null}
 
                 {/* Desktop & Home Brand */}
-                <div className={isSubView ? 'hidden lg:block' : 'block'}>
-                  <div className="flex items-center gap-2">
+                <div className={isSubView ? 'hidden lg:block' : 'block min-w-0'}>
+                  <div className="flex items-center gap-2 min-w-0">
                     <span
                       onClick={onBackHome}
                       className="font-serif-wine text-sm sm:text-lg font-bold tracking-wider text-amber-200 whitespace-nowrap cursor-pointer"
@@ -189,7 +204,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       WINECONTROL
                     </span>
                     {isSubView && (
-                      <span className="text-xs text-amber-100/90 font-semibold whitespace-nowrap">
+                      <span className="text-xs text-amber-100/90 font-semibold truncate">
                         · {TAB_TITLES[activeTab]}
                       </span>
                     )}
@@ -202,14 +217,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             {/* Right Action Buttons */}
-            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-              {/* Sincronizar button: distinctly colored when pending/unsynced vs synced */}
+            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+              {/* Sincronizar button: compact icon on mobile so it never crowds header title */}
               <button
                 type="button"
                 onClick={handleManualSync}
                 disabled={isSyncing}
                 title={syncTooltip}
-                className={`min-h-[38px] sm:min-h-[40px] px-2.5 sm:px-3 flex items-center justify-center gap-1.5 rounded-xl border text-xs font-semibold transition-all whitespace-nowrap shrink-0 cursor-pointer active:scale-95 ${syncButtonClasses}`}
+                aria-label={syncLabel}
+                className={`w-8 h-8 sm:w-auto sm:h-9 sm:px-3 flex items-center justify-center gap-1.5 rounded-xl border text-xs font-semibold transition-all whitespace-nowrap shrink-0 cursor-pointer active:scale-95 ${syncButtonClasses}`}
               >
                 {isSyncing ? (
                   <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
@@ -222,28 +238,62 @@ export const Navbar: React.FC<NavbarProps> = ({
                 ) : (
                   <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                 )}
-                <span>{syncLabel}</span>
+                <span className="hidden sm:inline">{syncLabel}</span>
               </button>
 
-              {/* Descargar CS en rojo suave */}
+              {/* Descargar CS: compact icon on mobile */}
               <button
                 type="button"
                 onClick={handleDownloadBackup}
-                className="min-h-[38px] sm:min-h-[40px] px-2.5 sm:px-3 flex items-center justify-center gap-1.5 rounded-xl bg-red-500/80 hover:bg-red-500 active:scale-95 text-white border border-red-300/60 text-xs font-semibold shadow-sm transition-all whitespace-nowrap shrink-0 cursor-pointer"
+                className="w-8 h-8 sm:w-auto sm:h-9 sm:px-3 flex items-center justify-center gap-1.5 rounded-xl bg-red-500/80 hover:bg-red-500 active:scale-95 text-white border border-red-300/60 text-xs font-semibold shadow-sm transition-all whitespace-nowrap shrink-0 cursor-pointer"
                 title="Descargar copia de seguridad JSON (CS)"
+                aria-label="Descargar copia de seguridad (CS)"
               >
                 <Download className="w-3.5 h-3.5 shrink-0" />
-                <span>Descargar CS</span>
+                <span className="hidden sm:inline">Descargar CS</span>
               </button>
+
+              {/* Campanilla compacta integrada para avisos de declaraciones pendientes */}
+              {pendingAlerts.length > 0 && onToggleAlerts && (
+                <button
+                  type="button"
+                  onClick={onToggleAlerts}
+                  aria-expanded={!isAlertsCollapsed}
+                  aria-label={`Avisos de declaraciones oficiales pendientes (${pendingAlerts.length})`}
+                  title={`${pendingAlerts.length} ${
+                    pendingAlerts.length === 1
+                      ? 'declaración oficial pendiente'
+                      : 'declaraciones oficiales pendientes'
+                  } · Pulsa para ${isAlertsCollapsed ? 'mostrar' : 'minimizar'}`}
+                  className={`relative w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-xl transition-colors cursor-pointer shrink-0 ${
+                    !isAlertsCollapsed
+                      ? 'bg-stone-800 text-amber-300'
+                      : hasVencidoAlert
+                      ? 'text-rose-300 hover:text-rose-200 hover:bg-stone-800'
+                      : 'text-amber-300 hover:text-amber-200 hover:bg-stone-800'
+                  }`}
+                >
+                  <BellRing className="w-4 h-4" />
+                  <span
+                    className={`absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] px-1 rounded-full text-[9px] font-bold flex items-center justify-center tabular-nums leading-none ring-2 ring-stone-900 ${
+                      hasVencidoAlert
+                        ? 'bg-red-600 text-white'
+                        : 'bg-amber-400 text-stone-950'
+                    }`}
+                  >
+                    {pendingAlerts.length}
+                  </span>
+                </button>
+              )}
 
               <button
                 type="button"
                 onClick={handleOpenConfig}
-                className="min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-stone-300 hover:text-amber-200 hover:bg-stone-800 transition-colors cursor-pointer shrink-0"
+                className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-xl text-stone-300 hover:text-amber-200 hover:bg-stone-800 transition-colors cursor-pointer shrink-0"
                 title="Datos de la bodega, sincronización y copia de seguridad"
                 aria-label="Configuración de la bodega"
               >
-                <Settings className="w-5 h-5" />
+                <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             </div>
           </div>

@@ -25,6 +25,7 @@ import {
   VARIEDADES_PREDEFINIDAS,
 } from '../types/winery';
 import { inferTipoVinoFromVarieties, isRedVariety } from '../utils/wineType';
+import { getLocalIsoDate } from '../utils/dateUtils';
 
 interface PlanoBodegaViewProps {
   onOpenNewEntradaForDep?: (depositoId: string) => void;
@@ -328,7 +329,7 @@ export const PlanoBodegaView: React.FC<PlanoBodegaViewProps> = ({
     updateDeposito(dep.id, {
       litrosActuales: next,
       estado: next === 0 ? 'Vacío' : dep.estado === 'Vacío' ? 'Estabilización / Reposo' : dep.estado,
-      fechaUltimaOperacion: new Date().toISOString().slice(0, 10),
+      fechaUltimaOperacion: getLocalIsoDate(),
     });
   };
 
@@ -352,7 +353,7 @@ export const PlanoBodegaView: React.FC<PlanoBodegaViewProps> = ({
         : [{ variedad: VARIEDADES_PREDEFINIDAS[0], porcentaje: 100 }];
 
     addElaboracion({
-      fecha: new Date().toISOString().slice(0, 10),
+      fecha: getLocalIsoDate(),
       depositoOrigenId: selectedDep.id,
       depositoDestinoId: transferTargetId,
       destinoTipo: 'deposito',

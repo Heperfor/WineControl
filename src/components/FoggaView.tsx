@@ -30,6 +30,7 @@ import {
   sumFoggaCadroB,
 } from '../utils/foggaInfoviAutomation';
 import { exportFoggaMr441bPDF } from '../utils/foggaInfoviExportUtils';
+import { getLocalIsoDate } from '../utils/dateUtils';
 
 interface FoggaViewProps {
   initialCampanaInicio?: number;
@@ -207,7 +208,7 @@ export const FoggaView: React.FC<FoggaViewProps> = ({ initialCampanaInicio }) =>
   };
 
   const handleGuardar = (markAsPresented?: boolean) => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalIsoDate();
     const nowTime = new Date().toTimeString().slice(0, 5);
     const next: FoggaMr441bDeclaracion = {
       ...draft,

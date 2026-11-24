@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  AlertCircle,
   Archive,
   BarChart3,
   CheckCircle2,
@@ -63,6 +64,7 @@ export const AlmacenView: React.FC<AlmacenViewProps> = ({
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDeposito, setEditingDeposito] = useState<Deposito | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Delete confirm modal state
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -121,6 +123,7 @@ export const AlmacenView: React.FC<AlmacenViewProps> = ({
   });
 
   const handleOpenAddModal = () => {
+    setFormError(null);
     setEditingDeposito(null);
     setFormData({
       codigo: String(depositos.length + 1),
@@ -135,6 +138,7 @@ export const AlmacenView: React.FC<AlmacenViewProps> = ({
   };
 
   const handleOpenEditModal = (d: Deposito) => {
+    setFormError(null);
     setEditingDeposito(d);
     setFormData({
       codigo: d.codigo,
@@ -150,13 +154,37 @@ export const AlmacenView: React.FC<AlmacenViewProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.codigo.trim() || formData.capacidadLitros <= 0) return;
+    const codigoTrimmed = formData.codigo.trim().toUpperCase();
+    if (!codigoTrimmed) {
+      setFormError('Indique un código de recipiente válido.');
+      return;
+    }
+    if (!Number.isFinite(formData.capacidadLitros) || formData.capacidadLitros <= 0) {
+      setFormError('La capacidad del depósito debe ser mayor que 0 litros.');
+      return;
+    }
+    const isDuplicateCode = depositos.some(
+      (d) =>
+        d.codigo.trim().toUpperCase() === codigoTrimmed &&
+        d.id !== editingDeposito?.id
+    );
+    if (isDuplicateCode) {
+      setFormError(`Ya existe otro depósito registrado con el código "${codigoTrimmed}".`);
+      return;
+    }
+
+    setFormError(null);
+    const payload = {
+      ...formData,
+      codigo: codigoTrimmed,
+      nombre: formData.nombre.trim() || `Depósito ${codigoTrimmed}`,
+    };
 
     if (editingDeposito) {
-      updateDeposito(editingDeposito.id, formData);
+      updateDeposito(editingDeposito.id, payload);
     } else {
       addDeposito({
-        ...formData,
+        ...payload,
         litrosActuales: 0,
         variedades: [],
       });
@@ -272,7 +300,10 @@ export const AlmacenView: React.FC<AlmacenViewProps> = ({
           {/* Tanks Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {depositos.map((dep) => {
-              const fillPct = Math.round((dep.litrosActuales / dep.capacidadLitros) * 100);
+              const fillPct =
+                dep.capacidadLitros > 0
+                  ? Math.round((dep.litrosActuales / dep.capacidadLitros) * 100)
+                  : 0;
               const isTankEmpty = dep.litrosActuales === 0;
 
               return (
@@ -609,8 +640,9 @@ export const AlmacenView: React.FC<AlmacenViewProps> = ({
             <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 text-sm text-stone-800 overflow-y-auto">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-medium text-stone-700 mb-1">Código Recipiente *</label>
+                  <label htmlFor="dep-codigo" className="block font-medium text-stone-700 mb-1">Código Recipiente *</label>
                   <input
+                    id="dep-codigo"
                     type="text"
                     required
                     placeholder="Ej. 11, 6F, B4"
@@ -620,10 +652,12 @@ export const AlmacenView: React.FC<AlmacenViewProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block font-medium text-stone-700 mb-1">Capacidad Total (Litros) *</label>
+                  <label htmlFor="dep-capacidad" className="block font-medium text-stone-700 mb-1">Capacidad Total (Litros) *</label>
                   <input
+                    id="dep-capacidad"
                     type="number"
                     required
+                    min={1}
                     value={formData.capacidadLitros}
                     onChange={(e) => setFormData({ ...formData, capacidadLitros: Number(e.target.value) })}
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl font-semibold"
@@ -632,8 +666,9 @@ export const AlmacenView: React.FC<AlmacenViewProps> = ({
               </div>
 
               <div>
-                <label className="block font-medium text-stone-700 mb-1">Nombre Descriptivo</label>
+                <label htmlFor="dep-nombre" className="block font-medium text-stone-700 mb-1">Nombre Descriptivo</label>
                 <input
+                  id="dep-nombre"
                   type="text"
                   placeholder="Ej. Depósito Inox Cónico 6"
                   value={formData.nombre}
@@ -644,8 +679,9 @@ export const AlmacenView: React.FC<AlmacenViewProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-medium text-stone-700 mb-1">Tipo de Recipiente *</label>
+                  <label htmlFor="dep-tipo" className="block font-medium text-stone-700 mb-1">Tipo de Recipiente *</label>
                   <select
+                    id="dep-tipo"
                     value={formData.tipoRecipiente}
                     onChange={(e) => setFormData({ ...formData, tipoRecipiente: e.target.value as TipoRecipiente })}
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl bg-white"
@@ -659,8 +695,9 @@ export const AlmacenView: React.FC<AlmacenViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-medium text-stone-700 mb-1">Estado Operativo</label>
+                  <label htmlFor="dep-estado" className="block font-medium text-stone-700 mb-1">Estado Operativo</label>
                   <select
+                    id="dep-estado"
                     value={formData.estado}
                     onChange={(e) => setFormData({ ...formData, estado: e.target.value as EstadoDeposito })}
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl bg-white"
@@ -673,6 +710,13 @@ export const AlmacenView: React.FC<AlmacenViewProps> = ({
                   </select>
                 </div>
               </div>
+
+              {formError && (
+                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{formError}</span>
+                </div>
+              )}
 
               <div className="pt-3 border-t border-stone-200 flex justify-end gap-3">
                 <button

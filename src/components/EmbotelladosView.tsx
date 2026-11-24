@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Boxes,
   CheckCircle2,
@@ -37,6 +37,7 @@ import {
   inferTipoVinoFromVarieties,
   resolveEmbotelladoTipoVino,
 } from '../utils/wineType';
+import { getLocalIsoDate } from '../utils/dateUtils';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 
 const MARCAS_DISPONIBLES: MarcaVino[] = MARCAS_COMERCIALES;
@@ -111,7 +112,7 @@ export const EmbotelladosView: React.FC<EmbotelladosViewProps> = ({
     tipoCaja: TipoCaja;
     observaciones: string;
   }>({
-    fecha: new Date().toISOString().slice(0, 10),
+    fecha: getLocalIsoDate(),
     marca: 'Xouba',
     tipoVino: 'Blanco',
     anada: Number(bodegaConfig.anoCampana) || new Date().getFullYear(),
@@ -170,9 +171,17 @@ export const EmbotelladosView: React.FC<EmbotelladosViewProps> = ({
     calculatedBotellas / (formData.tipoCaja === '2 botellas' ? 2 : formData.tipoCaja === '3 botellas' ? 3 : 6)
   );
 
+  const lastHandledOpenRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (initialOpenModal) {
-      handleOpenAddModal(preselectedDepositoId);
+      const openKey = `${initialOpenModal}-${preselectedDepositoId || ''}`;
+      if (lastHandledOpenRef.current !== openKey) {
+        lastHandledOpenRef.current = openKey;
+        handleOpenAddModal(preselectedDepositoId);
+      }
+    } else {
+      lastHandledOpenRef.current = null;
     }
   }, [initialOpenModal, preselectedDepositoId]);
 
@@ -186,7 +195,7 @@ export const EmbotelladosView: React.FC<EmbotelladosViewProps> = ({
     const defaultDepId = chosenDep ? chosenDep.id : '1';
     const defaultMarca: MarcaVino = 'Xouba';
     const tagKey = inferTipoEtiquetaFromMarca(defaultMarca);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalIsoDate();
     const inferredAnada = inferAnadaForTank(defaultDepId, Number(today.slice(0, 4)));
 
     setFormData({

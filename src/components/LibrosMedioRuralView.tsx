@@ -35,6 +35,7 @@ import {
   exportMedioRuralL5Excel,
   exportMedioRuralL5PDF,
 } from '../utils/medioRuralExportUtils';
+import { getLocalIsoDate } from '../utils/dateUtils';
 
 type BookId = 1 | 2 | 3 | 4 | 5;
 type SpreadView = 'completo' | 'pag1' | 'pag2';
@@ -137,7 +138,7 @@ export const LibrosMedioRuralView: React.FC = () => {
   const [isL1EntModalOpen, setIsL1EntModalOpen] = useState(false);
   const [editingL1EntId, setEditingL1EntId] = useState<string | null>(null);
   const [l1EntForm, setL1EntForm] = useState({
-    data: new Date().toISOString().slice(0, 10),
+    data: getLocalIsoDate(),
     docClase: '',
     docNumero: '',
     procedencia: 'Colleita propia',
@@ -157,7 +158,7 @@ export const LibrosMedioRuralView: React.FC = () => {
   const [isL1SalModalOpen, setIsL1SalModalOpen] = useState(false);
   const [editingL1SalId, setEditingL1SalId] = useState<string | null>(null);
   const [l1SalForm, setL1SalForm] = useState({
-    data: new Date().toISOString().slice(0, 10),
+    data: getLocalIsoDate(),
     docClase: '',
     docNumeroReferencia: '',
     destino: 'Embotellado',
@@ -180,7 +181,7 @@ export const LibrosMedioRuralView: React.FC = () => {
   const [isL2EntModalOpen, setIsL2EntModalOpen] = useState(false);
   const [editingL2EntId, setEditingL2EntId] = useState<string | null>(null);
   const [l2EntForm, setL2EntForm] = useState({
-    data: new Date().toISOString().slice(0, 10),
+    data: getLocalIsoDate(),
     designacionProduto: '',
     litros: '',
     numBotellas: '',
@@ -193,7 +194,7 @@ export const LibrosMedioRuralView: React.FC = () => {
   const [isL2SalModalOpen, setIsL2SalModalOpen] = useState(false);
   const [editingL2SalId, setEditingL2SalId] = useState<string | null>(null);
   const [l2SalForm, setL2SalForm] = useState({
-    data: new Date().toISOString().slice(0, 10),
+    data: getLocalIsoDate(),
     documentoComercial: '',
     litros: '',
     observacions: '',
@@ -206,7 +207,7 @@ export const LibrosMedioRuralView: React.FC = () => {
   const [isL3ModalOpen, setIsL3ModalOpen] = useState(false);
   const [editingL3Id, setEditingL3Id] = useState<string | null>(null);
   const [l3Form, setL3Form] = useState({
-    data: new Date().toISOString().slice(0, 10),
+    data: getLocalIsoDate(),
     procedenciaRazonSocial: '',
     procedenciaEnderezo: '',
     destinoRazonSocial: bodegaConfig.nombreBodega,
@@ -232,7 +233,7 @@ export const LibrosMedioRuralView: React.FC = () => {
   const [isL4ModalOpen, setIsL4ModalOpen] = useState(false);
   const [editingL4Id, setEditingL4Id] = useState<string | null>(null);
   const [l4Form, setL4Form] = useState({
-    data: new Date().toISOString().slice(0, 10),
+    data: getLocalIsoDate(),
     partidaIdenEnvases: '',
     partidaProduto: '',
     partidaLitrosUtilizados: '',
@@ -262,7 +263,7 @@ export const LibrosMedioRuralView: React.FC = () => {
   const [editingL5Id, setEditingL5Id] = useState<string | null>(null);
   const [l5Form, setL5Form] = useState({
     num: 1,
-    dataInicio: new Date().toISOString().slice(0, 10),
+    dataInicio: getLocalIsoDate(),
     procesoCodigo: 'FA · Fermentación alcohólica',
     partidaIdenEnvases: '',
     partidaProduto: '',
@@ -479,7 +480,7 @@ export const LibrosMedioRuralView: React.FC = () => {
   const openCreateL1Entrada = () => {
     setEditingL1EntId(null);
     setL1EntForm({
-      data: new Date().toISOString().slice(0, 10),
+      data: getLocalIsoDate(),
       docClase: '',
       docNumero: '',
       procedencia: 'Colleita propia',
@@ -549,7 +550,7 @@ export const LibrosMedioRuralView: React.FC = () => {
   const openCreateL1Salida = () => {
     setEditingL1SalId(null);
     setL1SalForm({
-      data: new Date().toISOString().slice(0, 10),
+      data: getLocalIsoDate(),
       docClase: '',
       docNumeroReferencia: '',
       destino: 'Embotellado',
@@ -619,7 +620,7 @@ export const LibrosMedioRuralView: React.FC = () => {
   const openCreateL2Entrada = () => {
     setEditingL2EntId(null);
     setL2EntForm({
-      data: new Date().toISOString().slice(0, 10),
+      data: getLocalIsoDate(),
       designacionProduto: 'Branco. ',
       litros: '',
       numBotellas: '',
@@ -671,7 +672,7 @@ export const LibrosMedioRuralView: React.FC = () => {
   const openCreateL2Salida = () => {
     setEditingL2SalId(null);
     setL2SalForm({
-      data: new Date().toISOString().slice(0, 10),
+      data: getLocalIsoDate(),
       documentoComercial: '',
       litros: '',
       observacions: '',
@@ -711,7 +712,7 @@ export const LibrosMedioRuralView: React.FC = () => {
   const openCreateL3 = () => {
     setEditingL3Id(null);
     setL3Form({
-      data: new Date().toISOString().slice(0, 10),
+      data: getLocalIsoDate(),
       procedenciaRazonSocial: 'Almacén Enolóxico Bodega',
       procedenciaEnderezo: bodegaConfig.localidad || 'Cambados',
       destinoRazonSocial: bodegaConfig.nombreBodega,
@@ -799,7 +800,7 @@ export const LibrosMedioRuralView: React.FC = () => {
   const openCreateL4 = () => {
     setEditingL4Id(null);
     setL4Form({
-      data: new Date().toISOString().slice(0, 10),
+      data: getLocalIsoDate(),
       partidaIdenEnvases: 'Dep. 3',
       partidaProduto: 'Viño Branco',
       partidaLitrosUtilizados: '',
@@ -897,7 +898,7 @@ export const LibrosMedioRuralView: React.FC = () => {
     setEditingL5Id(null);
     setL5Form({
       num: mrL5Procesos.length + 1,
-      dataInicio: new Date().toISOString().slice(0, 10),
+      dataInicio: getLocalIsoDate(),
       procesoCodigo: 'FA · Fermentación alcohólica',
       partidaIdenEnvases: 'Dep. 3',
       partidaProduto: 'Mosto Branco',

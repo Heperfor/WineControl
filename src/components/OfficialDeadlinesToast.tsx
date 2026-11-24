@@ -5,7 +5,6 @@ import {
   BellRing,
   CheckCircle2,
   ChevronDown,
-  ChevronUp,
   Clock,
 } from 'lucide-react';
 import { useWinery } from '../context/WineryContext';
@@ -14,8 +13,11 @@ import {
   OfficialDeadlineAlert,
 } from '../utils/foggaInfoviAutomation';
 import { InfoviMesPeriodo } from '../types/winery';
+import { getLocalIsoDate } from '../utils/dateUtils';
 
 interface OfficialDeadlinesToastProps {
+  isCollapsed: boolean;
+  onSetCollapsed: (collapsed: boolean) => void;
   onOpenFogga: (campanaInicio: number) => void;
   onOpenInfovi: (campanaInicio: number, mes: InfoviMesPeriodo) => void;
 }
@@ -26,6 +28,8 @@ const formatFechaEs = (iso: string) => {
 };
 
 export const OfficialDeadlinesToast: React.FC<OfficialDeadlinesToastProps> = ({
+  isCollapsed,
+  onSetCollapsed,
   onOpenFogga,
   onOpenInfovi,
 }) => {
@@ -36,7 +40,6 @@ export const OfficialDeadlinesToast: React.FC<OfficialDeadlinesToastProps> = ({
     confirmarInfoviPresentada,
   } = useWinery();
 
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   const alerts = useMemo(
@@ -44,7 +47,7 @@ export const OfficialDeadlinesToast: React.FC<OfficialDeadlinesToastProps> = ({
     [foggaDeclaraciones, infoviDeclaraciones]
   );
 
-  if (alerts.length === 0) return null;
+  if (alerts.length === 0 || isCollapsed) return null;
 
   const handleConfirm = (alert: OfficialDeadlineAlert) => {
     if (alert.modulo === 'fogga_mr441b') {
@@ -54,32 +57,6 @@ export const OfficialDeadlinesToast: React.FC<OfficialDeadlinesToastProps> = ({
     }
     setConfirmingId(null);
   };
-
-  if (isCollapsed) {
-    const mostUrgent = alerts[0];
-    const hasVencido = alerts.some((a) => a.urgencia === 'vencido');
-    return (
-      <div className="fixed bottom-4 right-4 z-40 no-print">
-        <button
-          type="button"
-          onClick={() => setIsCollapsed(false)}
-          className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl shadow-lg border text-xs font-semibold cursor-pointer transition-transform active:scale-95 ${
-            hasVencido
-              ? 'bg-red-700 hover:bg-red-800 text-white border-red-500'
-              : 'bg-amber-600 hover:bg-amber-700 text-white border-amber-400'
-          }`}
-        >
-          <BellRing className="w-4 h-4 shrink-0" />
-          <span className="tabular-nums">
-            {alerts.length}{' '}
-            {alerts.length === 1 ? 'declaración oficial pendiente' : 'declaraciones oficiales pendientes'}
-          </span>
-          <span className="hidden sm:inline opacity-85">· {mostUrgent.campanaLabel}</span>
-          <ChevronUp className="w-4 h-4 shrink-0" />
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div
@@ -102,7 +79,7 @@ export const OfficialDeadlinesToast: React.FC<OfficialDeadlinesToastProps> = ({
         </div>
         <button
           type="button"
-          onClick={() => setIsCollapsed(true)}
+          onClick={() => onSetCollapsed(true)}
           className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-stone-300 hover:text-white hover:bg-stone-800 cursor-pointer shrink-0"
           title="Minimizar avisos"
           aria-label="Minimizar avisos"
@@ -193,7 +170,7 @@ export const OfficialDeadlinesToast: React.FC<OfficialDeadlinesToastProps> = ({
                       } else if (alert.mesInfovi) {
                         onOpenInfovi(alert.campanaInicio, alert.mesInfovi);
                       }
-                      setIsCollapsed(true);
+                      onSetCollapsed(true);
                     }}
                     className="flex-1 min-h-[36px] px-2.5 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 text-white text-[11px] font-semibold flex items-center justify-center gap-1 cursor-pointer"
                   >
@@ -201,7 +178,7 @@ export const OfficialDeadlinesToast: React.FC<OfficialDeadlinesToastProps> = ({
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                   {alert.fechaAperturaPlazo &&
-                  new Date().toISOString().slice(0, 10) < alert.fechaAperturaPlazo ? (
+                  getLocalIsoDate() < alert.fechaAperturaPlazo ? (
                     <span className="min-h-[36px] px-2.5 py-1.5 rounded-lg bg-stone-100 text-stone-600 border border-stone-200 text-[11px] font-medium flex items-center justify-center whitespace-nowrap">
                       Abre {formatFechaEs(alert.fechaAperturaPlazo)}
                     </span>

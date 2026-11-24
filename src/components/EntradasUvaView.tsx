@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   Calendar,
@@ -28,6 +28,7 @@ import {
 } from '../types/winery';
 import { mapDepositoIdToZonaLd } from '../utils/appccAutomation';
 import { TIPO_VINO_THEME, inferTipoVinoFromVarieties } from '../utils/wineType';
+import { getLocalIsoDate } from '../utils/dateUtils';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 
 const TIPOS_RECIPIENTE = TIPOS_RECIPIENTE_BODEGA;
@@ -96,7 +97,7 @@ export const EntradasUvaView: React.FC<EntradasUvaViewProps> = ({
     anada: number;
     gradoBaboBaume: number;
   }>({
-    fecha: new Date().toISOString().slice(0, 10),
+    fecha: getLocalIsoDate(),
     parcelaId: '',
     parcelaNombre: '',
     desgloseVariedades: [],
@@ -115,10 +116,18 @@ export const EntradasUvaView: React.FC<EntradasUvaViewProps> = ({
       ? Number(((formData.litrosMosto / formData.kgTotales) * 100).toFixed(1))
       : 0;
 
+  const lastHandledOpenRef = useRef<string | null>(null);
+
   // Open modal if prop triggers it
   useEffect(() => {
     if (initialOpenModal) {
-      handleOpenAddModal(preselectedParcelaId, preselectedDepositoId);
+      const openKey = `${initialOpenModal}-${preselectedParcelaId || ''}-${preselectedDepositoId || ''}`;
+      if (lastHandledOpenRef.current !== openKey) {
+        lastHandledOpenRef.current = openKey;
+        handleOpenAddModal(preselectedParcelaId, preselectedDepositoId);
+      }
+    } else {
+      lastHandledOpenRef.current = null;
     }
   }, [initialOpenModal, preselectedParcelaId, preselectedDepositoId]);
 
@@ -140,7 +149,7 @@ export const EntradasUvaView: React.FC<EntradasUvaViewProps> = ({
     }
 
     const totalKg = initialDesglose.reduce((sum, item) => sum + item.kg, 0);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalIsoDate();
 
     setFormData({
       fecha: today,
@@ -168,7 +177,7 @@ export const EntradasUvaView: React.FC<EntradasUvaViewProps> = ({
       desgloseVariedades: [...entrada.desgloseVariedades],
       kgTotales: entrada.kgTotales,
       depositoDestinoId: entrada.depositoDestinoId,
-      litrosMosto: entrada.litrosMosto || (entrada as any).litrosEstimadosMosto || 0,
+      litrosMosto: entrada.litrosMosto || entrada.litrosEstimadosMosto || 0,
       tipoRecipiente: entrada.tipoRecipiente,
       tipoVino:
         entrada.tipoVino ||
@@ -397,7 +406,7 @@ export const EntradasUvaView: React.FC<EntradasUvaViewProps> = ({
       {/* Mobile Card List */}
       <div className="md:hidden space-y-3">
         {filteredEntradas.map((entrada) => {
-          const litros = entrada.litrosMosto || (entrada as any).litrosEstimadosMosto || 0;
+          const litros = entrada.litrosMosto || entrada.litrosEstimadosMosto || 0;
           const rendimiento =
             entrada.rendimientoRealPorcentaje ||
             (entrada.kgTotales > 0 ? Number(((litros / entrada.kgTotales) * 100).toFixed(1)) : 0);
@@ -532,7 +541,7 @@ export const EntradasUvaView: React.FC<EntradasUvaViewProps> = ({
             </thead>
             <tbody className="divide-y divide-stone-100 text-stone-700">
               {filteredEntradas.map((entrada) => {
-                const litros = entrada.litrosMosto || (entrada as any).litrosEstimadosMosto || 0;
+                const litros = entrada.litrosMosto || entrada.litrosEstimadosMosto || 0;
                 const rendimiento =
                   entrada.rendimientoRealPorcentaje ||
                   (entrada.kgTotales > 0 ? Number(((litros / entrada.kgTotales) * 100).toFixed(1)) : 0);

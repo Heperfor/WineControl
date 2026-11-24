@@ -22,6 +22,7 @@ import {
   exportAeatProductoElaboradoExcel,
   exportAeatProductoElaboradoPDF,
 } from '../utils/aeatExportUtils';
+import { getLocalIsoDate } from '../utils/dateUtils';
 
 type LibroTab = 'materias_primas' | 'producto_elaborado';
 type SpreadView = 'completo' | 'pag1' | 'pag2';
@@ -78,7 +79,7 @@ export const LibrosAeatView: React.FC = () => {
   const [mpForm, setMpForm] = useState({
     numeroOrden: 1,
     observaciones: 'Colleita propia',
-    fecha: new Date().toISOString().slice(0, 10),
+    fecha: getLocalIsoDate(),
     docNumero: '',
     nifOCae: bodegaConfig.cifNif || '76721750Y',
     grado: '',
@@ -102,7 +103,7 @@ export const LibrosAeatView: React.FC = () => {
   const [editingPeId, setEditingPeId] = useState<string | null>(null);
   const [peForm, setPeForm] = useState({
     numeroAsiento: 1,
-    fechaMovimiento: new Date().toISOString().slice(0, 10),
+    fechaMovimiento: getLocalIsoDate(),
     tipoMovimiento: 'Obtención / Elaboración',
     regimenFiscal: 'Suspensivo',
     epigrafe: 'V0',
@@ -196,7 +197,7 @@ export const LibrosAeatView: React.FC = () => {
     setMpForm({
       numeroOrden: nextOrder,
       observaciones: 'Colleita propia',
-      fecha: new Date().toISOString().slice(0, 10),
+      fecha: getLocalIsoDate(),
       docNumero: '',
       nifOCae: bodegaConfig.cifNif || '76721750Y',
       grado: '',
@@ -279,7 +280,7 @@ export const LibrosAeatView: React.FC = () => {
     setEditingPeId(null);
     setPeForm({
       numeroAsiento: nextAsiento,
-      fechaMovimiento: new Date().toISOString().slice(0, 10),
+      fechaMovimiento: getLocalIsoDate(),
       tipoMovimiento: 'Obtención / Elaboración',
       regimenFiscal: 'Suspensivo',
       epigrafe: 'V0',

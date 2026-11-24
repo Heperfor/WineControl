@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Activity,
   ArrowRight,
@@ -17,6 +17,7 @@ import {
   VARIEDADES_PREDEFINIDAS,
 } from '../types/winery';
 import { TIPO_VINO_THEME, inferTipoVinoFromVarieties } from '../utils/wineType';
+import { getLocalIsoDate } from '../utils/dateUtils';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 
 const OPERACIONES_ENOLOGICAS: OperacionElaboracion[] = [
@@ -85,7 +86,7 @@ export const ElaboracionView: React.FC<ElaboracionViewProps> = ({
     detalleCorreccion: string;
     porcentajesVariedades: Array<{ variedad: string; porcentaje: number }>;
   }>({
-    fecha: new Date().toISOString().slice(0, 10),
+    fecha: getLocalIsoDate(),
     depositoOrigenId: preselectedDepositoId || depositos[0]?.id || '1',
     depositoDestinoId: preselectedDepositoId || depositos[0]?.id || '1',
     destinoTipo: 'mismo_deposito',
@@ -127,12 +128,20 @@ export const ElaboracionView: React.FC<ElaboracionViewProps> = ({
     return 12.5;
   };
 
+  const lastHandledOpenRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (preselectedDepositoId) {
       setSelectedDepositoFilter(preselectedDepositoId);
     }
     if (initialOpenModal) {
-      handleOpenAddModal(preselectedDepositoId);
+      const openKey = `${initialOpenModal}-${preselectedDepositoId || ''}`;
+      if (lastHandledOpenRef.current !== openKey) {
+        lastHandledOpenRef.current = openKey;
+        handleOpenAddModal(preselectedDepositoId);
+      }
+    } else {
+      lastHandledOpenRef.current = null;
     }
   }, [initialOpenModal, preselectedDepositoId]);
 
@@ -140,7 +149,7 @@ export const ElaboracionView: React.FC<ElaboracionViewProps> = ({
     setEditingElaboracion(null);
     const chosenDepId = depId || selectedDepositoFilter || depositos[0]?.id || '1';
     const depObj = depositos.find((d) => d.id === chosenDepId);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalIsoDate();
 
     const initialVars =
       depObj && depObj.variedades.length > 0
@@ -580,8 +589,9 @@ export const ElaboracionView: React.FC<ElaboracionViewProps> = ({
             <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto text-sm text-stone-800">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-medium text-stone-700 mb-1">Fecha de la Práctica *</label>
+                  <label htmlFor="elab-fecha" className="block font-medium text-stone-700 mb-1">Fecha de la Práctica *</label>
                   <input
+                    id="elab-fecha"
                     type="date"
                     required
                     value={formData.fecha}
@@ -590,8 +600,9 @@ export const ElaboracionView: React.FC<ElaboracionViewProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block font-medium text-stone-700 mb-1">Depósito Origen Nº *</label>
+                  <label htmlFor="elab-dep-origen" className="block font-medium text-stone-700 mb-1">Depósito Origen Nº *</label>
                   <select
+                    id="elab-dep-origen"
                     required
                     value={formData.depositoOrigenId}
                     onChange={(e) => handleOrigenChange(e.target.value)}
@@ -610,8 +621,9 @@ export const ElaboracionView: React.FC<ElaboracionViewProps> = ({
 
               {/* Operación Realizada */}
               <div>
-                <label className="block font-medium text-stone-700 mb-1">Operación Realizada *</label>
+                <label htmlFor="elab-operacion" className="block font-medium text-stone-700 mb-1">Operación Realizada *</label>
                 <select
+                  id="elab-operacion"
                   required
                   value={formData.operacionRealizada}
                   onChange={(e) => setFormData({ ...formData, operacionRealizada: e.target.value as OperacionElaboracion })}
@@ -628,8 +640,9 @@ export const ElaboracionView: React.FC<ElaboracionViewProps> = ({
               {/* Tipo de Vino, Añada y Grado Alcohólico */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block font-medium text-stone-700 mb-1">Tipo de Vino *</label>
+                  <label htmlFor="elab-tipo-vino" className="block font-medium text-stone-700 mb-1">Tipo de Vino *</label>
                   <select
+                    id="elab-tipo-vino"
                     required
                     value={formData.tipoVino}
                     onChange={(e) => setFormData({ ...formData, tipoVino: e.target.value as TipoVino })}
@@ -644,8 +657,9 @@ export const ElaboracionView: React.FC<ElaboracionViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-medium text-stone-700 mb-1">Añada *</label>
+                  <label htmlFor="elab-anada" className="block font-medium text-stone-700 mb-1">Añada *</label>
                   <input
+                    id="elab-anada"
                     type="number"
                     required
                     min={1990}
@@ -657,9 +671,10 @@ export const ElaboracionView: React.FC<ElaboracionViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-medium text-stone-700 mb-1">Grado Alcohólico *</label>
+                  <label htmlFor="elab-grado" className="block font-medium text-stone-700 mb-1">Grado Alcohólico *</label>
                   <div className="relative">
                     <input
+                      id="elab-grado"
                       type="number"
                       required
                       step="0.1"
@@ -678,10 +693,11 @@ export const ElaboracionView: React.FC<ElaboracionViewProps> = ({
               {/* If Sulfitado is selected: Cantidad añadida */}
               {formData.operacionRealizada === 'Sulfitado' && (
                 <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl">
-                  <label className="block font-medium text-amber-950 text-xs mb-1">
+                  <label htmlFor="elab-sulfitado" className="block font-medium text-amber-950 text-xs mb-1">
                     Cantidad Añadida de Sulfitado (g/hL o gramos totales) *
                   </label>
                   <input
+                    id="elab-sulfitado"
                     type="text"
                     required
                     placeholder="Ej. 35 g/hL metabisulfito potásico (o 50 g totales)"
@@ -695,10 +711,11 @@ export const ElaboracionView: React.FC<ElaboracionViewProps> = ({
               {/* If Correcciones is selected: Detalle de corrección */}
               {formData.operacionRealizada === 'Correcciones' && (
                 <div className="p-3.5 bg-indigo-50 border border-indigo-200 rounded-xl">
-                  <label className="block font-medium text-indigo-950 text-xs mb-1">
+                  <label htmlFor="elab-correccion" className="block font-medium text-indigo-950 text-xs mb-1">
                     Detalle de la Corrección Realizada *
                   </label>
                   <input
+                    id="elab-correccion"
                     type="text"
                     required
                     placeholder="Ej. Corrección ácida con ácido tartárico 1.5 g/L, nutrientes de fermentación..."
@@ -712,9 +729,10 @@ export const ElaboracionView: React.FC<ElaboracionViewProps> = ({
               {/* Cantidad Litros and Destino */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-medium text-stone-700 mb-1">Cantidad en Litros Intervenidos *</label>
+                  <label htmlFor="elab-litros" className="block font-medium text-stone-700 mb-1">Cantidad en Litros Intervenidos *</label>
                   <div className="relative">
                     <input
+                      id="elab-litros"
                       type="number"
                       required
                       value={formData.cantidadLitros}
@@ -726,10 +744,16 @@ export const ElaboracionView: React.FC<ElaboracionViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-medium text-stone-700 mb-1">Tipo de Destino *</label>
+                  <label htmlFor="elab-destino-tipo" className="block font-medium text-stone-700 mb-1">Tipo de Destino *</label>
                   <select
+                    id="elab-destino-tipo"
                     value={formData.destinoTipo}
-                    onChange={(e) => setFormData({ ...formData, destinoTipo: e.target.value as any })}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        destinoTipo: e.target.value as ElaboracionRegistro['destinoTipo'],
+                      })
+                    }
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl bg-white"
                   >
                     <option value="merma_limpieza">Merma / Desborre</option>
@@ -742,8 +766,9 @@ export const ElaboracionView: React.FC<ElaboracionViewProps> = ({
 
               {formData.destinoTipo === 'deposito' && (
                 <div>
-                  <label className="block font-medium text-stone-700 mb-1">Depósito Destino del Trasiego *</label>
+                  <label htmlFor="elab-dep-destino" className="block font-medium text-stone-700 mb-1">Depósito Destino del Trasiego *</label>
                   <select
+                    id="elab-dep-destino"
                     required
                     value={formData.depositoDestinoId || ''}
                     onChange={(e) => setFormData({ ...formData, depositoDestinoId: e.target.value })}

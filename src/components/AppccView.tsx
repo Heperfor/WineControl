@@ -47,6 +47,7 @@ import {
   mapDepositoIdToZonaLd,
 } from '../utils/appccAutomation';
 import { exportAppccManualSanidadPDF } from '../utils/appccPdfExport';
+import { getLocalIsoDate } from '../utils/dateUtils';
 import { inferTipoVinoFromVarieties } from '../utils/wineType';
 
 type AppccSectionTab =
@@ -113,7 +114,7 @@ export const AppccView: React.FC<AppccViewProps> = ({ initialMonth }) => {
     generarRegistrosMesAppcc,
   } = useWinery();
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = getLocalIsoDate();
   const currentMonthStr = todayStr.slice(0, 7);
   const responsableDefault = bodegaConfig.responsableTecnico || 'Héctor Pérez Formoso';
 
@@ -287,25 +288,33 @@ export const AppccView: React.FC<AppccViewProps> = ({ initialMonth }) => {
   }, [depositos, monthRecordsLd]);
 
   // Fast lookup map: `${fecha}|${zonaUpper}` -> AppccLimpiezaRegistro
+  // Prioriza incidencias (conforme === false) si hay varios registros el mismo día
   const ldCellMap = useMemo(() => {
     const map = new Map<string, AppccLimpiezaRegistro>();
     monthRecordsLd.forEach((rec) => {
       const key = `${rec.fecha}|${rec.zonaEquipo.toUpperCase()}`;
-      if (!map.has(key)) map.set(key, rec);
+      const existing = map.get(key);
+      if (!existing || (!rec.conforme && existing.conforme)) {
+        map.set(key, rec);
+      }
     });
     return map;
   }, [monthRecordsLd]);
 
   // Helper to resolve Insumos Lot numbers for Registro Embotellados (PDF p.4)
-  const findLoteInsumo = (tipo: 'botellas' | 'corchos', embLote: string) => {
+  const findLoteInsumo = (tipo: 'botellas' | 'corchos', embLote: string, embFecha?: string) => {
     const out = insumosMovimientos.find(
       (m) => m.tipoInsumo === tipo && m.embotelladoLoteAsociado === embLote && m.loteProveedor
     );
     if (out?.loteProveedor) return out.loteProveedor;
-    const entry = insumosMovimientos.find(
-      (m) => m.tipoInsumo === tipo && m.movimiento === 'entrada' && m.loteProveedor
-    );
-    return entry?.loteProveedor || 'Ver albarán';
+    const entries = insumosMovimientos
+      .filter((m) => m.tipoInsumo === tipo && m.movimiento === 'entrada' && m.loteProveedor)
+      .sort((a, b) => b.fecha.localeCompare(a.fecha));
+    if (embFecha) {
+      const prevEntry = entries.find((m) => m.fecha <= embFecha);
+      if (prevEntry?.loteProveedor) return prevEntry.loteProveedor;
+    }
+    return entries[0]?.loteProveedor || 'Ver albarán';
   };
 
   // Summary metrics
@@ -1671,10 +1680,10 @@ export const AppccView: React.FC<AppccViewProps> = ({ initialMonth }) => {
                       </td>
                       <td className="p-2.5 font-mono font-bold text-rose-900">{emb.lote}</td>
                       <td className="p-2.5 font-mono text-stone-700">
-                        {findLoteInsumo('botellas', emb.lote)}
+                        {findLoteInsumo('botellas', emb.lote, emb.fecha)}
                       </td>
                       <td className="p-2.5 font-mono text-stone-700">
-                        {findLoteInsumo('corchos', emb.lote)}
+                        {findLoteInsumo('corchos', emb.lote, emb.fecha)}
                       </td>
                       <td className="p-2.5 text-stone-600">
                         {emb.insumos.lacre ? `Lacre ${emb.insumos.colorLacre || 'OK'}` : '-'}
@@ -2193,8 +2202,11 @@ export const AppccView: React.FC<AppccViewProps> = ({ initialMonth }) => {
               </div>
               <div className="flex items-center justify-between gap-2">
                 <select
+                  aria-label="Estado de incidencia"
                   value={incForm.estado}
-                  onChange={(e) => setIncForm({ ...incForm, estado: e.target.value as any })}
+                  onChange={(e) =>
+                    setIncForm({ ...incForm, estado: e.target.value as 'Resuelta' | 'En seguimiento' })
+                  }
                   className="px-2.5 py-2 border border-stone-300 rounded-lg bg-white"
                 >
                   <option value="En seguimiento">En seguimiento</option>

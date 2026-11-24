@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useWinery } from '../context/WineryContext';
 import { MovimientoInsumo, TipoEtiqueta } from '../types/winery';
+import { getLocalIsoDate } from '../utils/dateUtils';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 
 export const InsumosView: React.FC = () => {
@@ -56,7 +57,7 @@ export const InsumosView: React.FC = () => {
     costeUnitario?: number;
     observaciones: string;
   }>({
-    fecha: new Date().toISOString().slice(0, 10),
+    fecha: getLocalIsoDate(),
     tipoInsumo: 'corchos',
     subtipo: 'natural',
     movimiento: 'entrada',
@@ -67,10 +68,13 @@ export const InsumosView: React.FC = () => {
     observaciones: 'Entrada de compra a proveedor.',
   });
 
-  const handleOpenAddModal = (presetTipo?: any, presetSubtipo?: string) => {
+  const handleOpenAddModal = (
+    presetTipo?: MovimientoInsumo['tipoInsumo'],
+    presetSubtipo?: string
+  ) => {
     setEditingMovimiento(null);
     setFormData({
-      fecha: new Date().toISOString().slice(0, 10),
+      fecha: getLocalIsoDate(),
       tipoInsumo: presetTipo || 'corchos',
       subtipo: presetSubtipo || (presetTipo === 'botellas' ? 'verde' : presetTipo === 'etiquetas' ? 'xouba' : presetTipo === 'cajas' ? '6 botellas' : 'natural'),
       movimiento: 'entrada',
@@ -489,8 +493,9 @@ export const InsumosView: React.FC = () => {
             <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 text-sm text-stone-800 overflow-y-auto">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-medium text-stone-700 mb-1">Fecha *</label>
+                  <label htmlFor="ins-fecha" className="block font-medium text-stone-700 mb-1">Fecha *</label>
                   <input
+                    id="ins-fecha"
                     type="date"
                     required
                     value={formData.fecha}
@@ -499,10 +504,16 @@ export const InsumosView: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block font-medium text-stone-700 mb-1">Tipo de Movimiento *</label>
+                  <label htmlFor="ins-movimiento" className="block font-medium text-stone-700 mb-1">Tipo de Movimiento *</label>
                   <select
+                    id="ins-movimiento"
                     value={formData.movimiento}
-                    onChange={(e) => setFormData({ ...formData, movimiento: e.target.value as any })}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        movimiento: e.target.value as MovimientoInsumo['movimiento'],
+                      })
+                    }
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl bg-white"
                   >
                     <option value="ajuste">Ajuste de Recuento</option>
@@ -514,10 +525,13 @@ export const InsumosView: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-medium text-stone-700 mb-1">Tipo de Insumo *</label>
+                  <label htmlFor="ins-tipo" className="block font-medium text-stone-700 mb-1">Tipo de Insumo *</label>
                   <select
+                    id="ins-tipo"
                     value={formData.tipoInsumo}
-                    onChange={(e) => handleTipoInsumoChange(e.target.value as any)}
+                    onChange={(e) =>
+                      handleTipoInsumoChange(e.target.value as MovimientoInsumo['tipoInsumo'])
+                    }
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl bg-white uppercase font-bold text-xs"
                   >
                     <option value="botellas">Botellas</option>
@@ -529,9 +543,10 @@ export const InsumosView: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block font-medium text-stone-700 mb-1">Subtipo / Especificación *</label>
+                  <label htmlFor="ins-subtipo" className="block font-medium text-stone-700 mb-1">Subtipo / Especificación *</label>
                   {formData.tipoInsumo === 'corchos' ? (
                     <select
+                      id="ins-subtipo"
                       value={formData.subtipo}
                       onChange={(e) => setFormData({ ...formData, subtipo: e.target.value })}
                       className="w-full px-3 py-2 border border-stone-300 rounded-xl bg-white"
@@ -541,6 +556,7 @@ export const InsumosView: React.FC = () => {
                     </select>
                   ) : formData.tipoInsumo === 'botellas' ? (
                     <select
+                      id="ins-subtipo"
                       value={formData.subtipo}
                       onChange={(e) => setFormData({ ...formData, subtipo: e.target.value })}
                       className="w-full px-3 py-2 border border-stone-300 rounded-xl bg-white"
@@ -550,6 +566,7 @@ export const InsumosView: React.FC = () => {
                     </select>
                   ) : formData.tipoInsumo === 'etiquetas' ? (
                     <select
+                      id="ins-subtipo"
                       value={formData.subtipo}
                       onChange={(e) => setFormData({ ...formData, subtipo: e.target.value })}
                       className="w-full px-3 py-2 border border-stone-300 rounded-xl bg-white"
@@ -564,6 +581,7 @@ export const InsumosView: React.FC = () => {
                     </select>
                   ) : formData.tipoInsumo === 'cajas' ? (
                     <select
+                      id="ins-subtipo"
                       value={formData.subtipo}
                       onChange={(e) => setFormData({ ...formData, subtipo: e.target.value })}
                       className="w-full px-3 py-2 border border-stone-300 rounded-xl bg-white"
@@ -574,6 +592,7 @@ export const InsumosView: React.FC = () => {
                     </select>
                   ) : (
                     <input
+                      id="ins-subtipo"
                       type="text"
                       value={formData.subtipo}
                       onChange={(e) => setFormData({ ...formData, subtipo: e.target.value })}

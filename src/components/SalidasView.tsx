@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useWinery } from '../context/WineryContext';
 import { MARCAS_COMERCIALES, MarcaVino, SalidaRegistro } from '../types/winery';
+import { getLocalIsoDate } from '../utils/dateUtils';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 
 interface SalidasViewProps {
@@ -73,7 +74,7 @@ export const SalidasView: React.FC<SalidasViewProps> = ({
     pvpUnitario?: number;
     observaciones: string;
   }>({
-    fecha: new Date().toISOString().slice(0, 10),
+    fecha: getLocalIsoDate(),
     marca: 'Xouba',
     lote: '',
     anada: new Date().getFullYear(),
@@ -94,7 +95,7 @@ export const SalidasView: React.FC<SalidasViewProps> = ({
     const embObj = embotellados.find((e) => e.lote === targetLote) || embotellados[0];
 
     const cant = 60;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalIsoDate();
     setFormData({
       fecha: today,
       marca: embObj ? embObj.marca : 'Xouba',
@@ -637,10 +638,16 @@ export const SalidasView: React.FC<SalidasViewProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-medium text-stone-700 mb-1">Régimen / Tipo de Salida *</label>
+                  <label htmlFor="sal-tipo-salida" className="block font-medium text-stone-700 mb-1">Régimen / Tipo de Salida *</label>
                   <select
+                    id="sal-tipo-salida"
                     value={formData.tipoSalida}
-                    onChange={(e) => setFormData({ ...formData, tipoSalida: e.target.value as any })}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        tipoSalida: e.target.value as SalidaRegistro['tipoSalida'],
+                      })
+                    }
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl bg-white"
                   >
                     <option value="Autoconsumo">Autoconsumo Bodega</option>
