@@ -85,6 +85,7 @@ export interface Parcela {
   nombre: string;
   paraje: string;
   superficieM2: number;
+  superficieHa?: number;
   totalCepas?: number;
   marcoPlantacion?: string; // ej: "1x1.8m"
   altitudM: number;
@@ -137,6 +138,7 @@ export interface EntradaUva {
   kgTotales: number;
   depositoDestinoId: string;
   litrosMosto: number; // Añadido a mano
+  litrosEstimadosMosto?: number;
   rendimientoRealPorcentaje?: number; // Cálculo automático: (litrosMosto / kgTotales) * 100
   tipoRecipiente: TipoRecipiente;
   tipoVino: TipoVino;
