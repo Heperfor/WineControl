@@ -170,14 +170,24 @@ const toOptStr = (v: unknown): string | undefined =>
 const formatSupabaseError = (table: string, error: { code?: string; message?: string }): string => {
   const code = error.code || '';
   const msg = error.message || 'Error desconocido';
-  if (code === '42501' || msg.toLowerCase().includes('row-level security')) {
+  const lower = msg.toLowerCase();
+  if (code === '42501' || lower.includes('row-level security')) {
     return `Permiso denegado en Supabase (${table}). Ejecuta las políticas RLS para "anon" en Supabase.`;
   }
-  if (code === '42P01' || msg.toLowerCase().includes('does not exist')) {
+  if (code === '42P01' || lower.includes('does not exist')) {
     return `La tabla "${table}" no existe en Supabase. Verifica tu esquema SQL.`;
   }
   if (code === 'PGRST204') {
     return `Columna no encontrada en "${table}": ${msg}`;
+  }
+  if (code === '23503' || lower.includes('foreign key')) {
+    return `Falta un registro relacionado en Supabase para "${table}". Pulsa "Subir todo a la nube" en Configuración.`;
+  }
+  if (code === '23514' || code === '23502' || code === '22007' || code === '22P02') {
+    return `Dato incompatible en "${table}" (${code}): ${msg}`;
+  }
+  if (lower.includes('failed to fetch') || lower.includes('networkerror') || lower.includes('load failed')) {
+    return `Sin respuesta del servidor Supabase (revisa internet o VITE_SUPABASE_URL).`;
   }
   return `Error en ${table}: ${msg}`;
 };
@@ -1329,6 +1339,79 @@ const buildTableRows = (table: SyncTableName, state: WineryDatabaseState, filter
   }
 };
 
+const augmentDirtyWithParentDependencies = (
+  state: WineryDatabaseState,
+  dirtyIds: DirtyIdsMap
+): DirtyIdsMap => {
+  const next: DirtyIdsMap = {};
+  SYNC_TABLES.forEach((t) => {
+    if (dirtyIds[t]?.length) next[t] = [...dirtyIds[t]!];
+  });
+
+  const addParent = (table: SyncTableName, id?: string | null) => {
+    const clean = id?.trim();
+    if (!clean) return;
+    const list = next[table] || [];
+    if (!list.includes(clean)) {
+      next[table] = [...list, clean];
+    }
+  };
+
+  if (next.entradas_uva?.length) {
+    const dirtySet = new Set(next.entradas_uva);
+    state.entradasUva.forEach((e) => {
+      if (dirtySet.has(e.id)) {
+        addParent('parcelas', e.parcelaId);
+        addParent('depositos', e.depositoDestinoId);
+      }
+    });
+  }
+
+  if (next.elaboraciones?.length) {
+    const dirtySet = new Set(next.elaboraciones);
+    state.elaboraciones.forEach((el) => {
+      if (dirtySet.has(el.id)) {
+        addParent('depositos', el.depositoOrigenId);
+        addParent('depositos', el.depositoDestinoId);
+      }
+    });
+  }
+
+  if (next.embotellados?.length) {
+    const dirtySet = new Set(next.embotellados);
+    state.embotellados.forEach((emb) => {
+      if (dirtySet.has(emb.id)) {
+        addParent('depositos', emb.depositoProcedenciaId);
+      }
+    });
+  }
+
+  if (next.salidas?.length) {
+    const dirtySet = new Set(next.salidas);
+    const embMap = new Map(state.embotellados.map((emb) => [emb.id, emb]));
+    state.salidas.forEach((sal) => {
+      if (dirtySet.has(sal.id) && sal.embotelladoId) {
+        addParent('embotellados', sal.embotelladoId);
+        const parentEmb = embMap.get(sal.embotelladoId);
+        if (parentEmb) {
+          addParent('depositos', parentEmb.depositoProcedenciaId);
+        }
+      }
+    });
+  }
+
+  if (next.analiticas?.length) {
+    const dirtySet = new Set(next.analiticas);
+    state.analiticas.forEach((a) => {
+      if (dirtySet.has(a.id)) {
+        addParent('depositos', a.depositoId);
+      }
+    });
+  }
+
+  return next;
+};
+
 export const pushChangesToSupabase = async (
   state: WineryDatabaseState,
   dirtyIds: DirtyIdsMap,
@@ -1360,6 +1443,7 @@ export const pushChangesToSupabase = async (
     }
 
     const isRemoteVesselsEmpty = !remoteDepsCheck || remoteDepsCheck.length === 0;
+    const effectiveDirtyIds = forceAll ? dirtyIds : augmentDirtyWithParentDependencies(state, dirtyIds);
 
     // 2. Delete pendingDeletes in reverse FK order (child -> parent)
     for (const table of DELETE_ORDER) {
@@ -1379,6 +1463,28 @@ export const pushChangesToSupabase = async (
       pushedCount += ids.length;
     }
 
+    let didFallbackParentPush = false;
+    const ensureParentTablesPushed = async (): Promise<SyncResult | null> => {
+      if (didFallbackParentPush) return null;
+      didFallbackParentPush = true;
+      const parentTables: SyncTableName[] = ['bodega_config', 'parcelas', 'depositos', 'embotellados'];
+      for (const pTable of parentTables) {
+        const pRows = buildTableRows(pTable, state, undefined);
+        for (let j = 0; j < pRows.length; j += 200) {
+          const pChunk = pRows.slice(j, j + 200);
+          const { error: pErr } = await supabase!.from(pTable).upsert(pChunk, { onConflict: 'id' });
+          if (pErr) {
+            return {
+              ok: false,
+              errorCode: pErr.code,
+              errorMessage: formatSupabaseError(pTable, pErr),
+            };
+          }
+        }
+      }
+      return null;
+    };
+
     // 3. Upsert dirty records in FK order (parent -> child)
     for (const table of UPSERT_ORDER) {
       const shouldPushAllForTable =
@@ -1391,8 +1497,8 @@ export const pushChangesToSupabase = async (
             table === 'mr_l2_sumas' ||
             table === 'mr_l3_sumas'));
 
-      const dirtySet = !shouldPushAllForTable && dirtyIds[table]?.length
-        ? new Set(dirtyIds[table])
+      const dirtySet = !shouldPushAllForTable && effectiveDirtyIds[table]?.length
+        ? new Set(effectiveDirtyIds[table])
         : shouldPushAllForTable
         ? undefined
         : null;
@@ -1404,7 +1510,13 @@ export const pushChangesToSupabase = async (
 
       for (let i = 0; i < rows.length; i += 200) {
         const chunk = rows.slice(i, i + 200);
-        const { error } = await supabase.from(table).upsert(chunk, { onConflict: 'id' });
+        let { error } = await supabase.from(table).upsert(chunk, { onConflict: 'id' });
+        if (error && error.code === '23503' && !forceAll && !didFallbackParentPush) {
+          const parentErr = await ensureParentTablesPushed();
+          if (parentErr) return parentErr;
+          const retry = await supabase.from(table).upsert(chunk, { onConflict: 'id' });
+          error = retry.error;
+        }
         if (error) {
           if (OPTIONAL_SYNC_TABLES.has(table) && isMissingTableError(error)) {
             break;
@@ -1470,35 +1582,35 @@ export const pullAllFromSupabase = async (): Promise<SyncResult> => {
       infoviRes,
     ] = await Promise.all([
       supabase.from('bodega_config').select('*'),
-      supabase.from('parcelas').select('*').order('id'),
-      supabase.from('depositos').select('*'),
-      supabase.from('entradas_uva').select('*').order('fecha', { ascending: false }),
-      supabase.from('elaboraciones').select('*').order('fecha', { ascending: false }),
-      supabase.from('embotellados').select('*').order('fecha', { ascending: false }),
-      supabase.from('salidas').select('*').order('fecha', { ascending: false }),
-      supabase.from('insumos_movimientos').select('*').order('fecha', { ascending: false }),
-      supabase.from('analiticas').select('*').order('fecha', { ascending: false }),
-      supabase.from('appcc_agua').select('*').order('fecha', { ascending: false }),
-      supabase.from('appcc_limpieza').select('*').order('fecha', { ascending: false }),
-      supabase.from('appcc_residuos').select('*').order('fecha', { ascending: false }),
-      supabase.from('appcc_plagas_mantenimiento').select('*').order('fecha', { ascending: false }),
-      supabase.from('appcc_proveedores').select('*').order('fecha_registro', { ascending: false }),
-      supabase.from('appcc_incidencias').select('*').order('fecha', { ascending: false }),
+      supabase.from('parcelas').select('*').order('id').range(0, 4999),
+      supabase.from('depositos').select('*').range(0, 4999),
+      supabase.from('entradas_uva').select('*').order('fecha', { ascending: false }).range(0, 4999),
+      supabase.from('elaboraciones').select('*').order('fecha', { ascending: false }).range(0, 4999),
+      supabase.from('embotellados').select('*').order('fecha', { ascending: false }).range(0, 4999),
+      supabase.from('salidas').select('*').order('fecha', { ascending: false }).range(0, 4999),
+      supabase.from('insumos_movimientos').select('*').order('fecha', { ascending: false }).range(0, 4999),
+      supabase.from('analiticas').select('*').order('fecha', { ascending: false }).range(0, 4999),
+      supabase.from('appcc_agua').select('*').order('fecha', { ascending: false }).range(0, 4999),
+      supabase.from('appcc_limpieza').select('*').order('fecha', { ascending: false }).range(0, 4999),
+      supabase.from('appcc_residuos').select('*').order('fecha', { ascending: false }).range(0, 4999),
+      supabase.from('appcc_plagas_mantenimiento').select('*').order('fecha', { ascending: false }).range(0, 4999),
+      supabase.from('appcc_proveedores').select('*').order('fecha_registro', { ascending: false }).range(0, 4999),
+      supabase.from('appcc_incidencias').select('*').order('fecha', { ascending: false }).range(0, 4999),
       supabase.from('aeat_materias_primas_sumas').select('*'),
-      supabase.from('aeat_materias_primas').select('*').order('numero_orden'),
-      supabase.from('aeat_producto_elaborado').select('*').order('numero_asiento'),
+      supabase.from('aeat_materias_primas').select('*').order('numero_orden').range(0, 4999),
+      supabase.from('aeat_producto_elaborado').select('*').order('numero_asiento').range(0, 4999),
       supabase.from('mr_l1_sumas').select('*'),
-      supabase.from('mr_l1_entradas').select('*').order('data'),
-      supabase.from('mr_l1_salidas').select('*').order('data'),
+      supabase.from('mr_l1_entradas').select('*').order('data').range(0, 4999),
+      supabase.from('mr_l1_salidas').select('*').order('data').range(0, 4999),
       supabase.from('mr_l2_sumas').select('*'),
-      supabase.from('mr_l2_entradas').select('*').order('data'),
-      supabase.from('mr_l2_salidas').select('*').order('data'),
+      supabase.from('mr_l2_entradas').select('*').order('data').range(0, 4999),
+      supabase.from('mr_l2_salidas').select('*').order('data').range(0, 4999),
       supabase.from('mr_l3_sumas').select('*'),
-      supabase.from('mr_l3_movimientos').select('*').order('data'),
-      supabase.from('mr_l4_practicas').select('*').order('data'),
-      supabase.from('mr_l5_procesos').select('*').order('num'),
-      supabase.from('fogga_declaraciones').select('*').order('campana_inicio', { ascending: false }),
-      supabase.from('infovi_declaraciones').select('*').order('campana_inicio', { ascending: false }),
+      supabase.from('mr_l3_movimientos').select('*').order('data').range(0, 4999),
+      supabase.from('mr_l4_practicas').select('*').order('data').range(0, 4999),
+      supabase.from('mr_l5_procesos').select('*').order('num').range(0, 4999),
+      supabase.from('fogga_declaraciones').select('*').order('campana_inicio', { ascending: false }).range(0, 499),
+      supabase.from('infovi_declaraciones').select('*').order('campana_inicio', { ascending: false }).range(0, 499),
     ]);
 
     const checks: Array<[SyncTableName, { error: any }]> = [

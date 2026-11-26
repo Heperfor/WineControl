@@ -933,7 +933,7 @@ export const getPendingOfficialDeadlines = (
     // 2. INFOVI Noviembre (Presentar del 1 al 20 de diciembre del año Y)
     const infNovOpen = `${y}-12-01`;
     const infNovDeadline = `${y}-12-20`;
-    const infNovWarnStart = addDaysIso(infNovDeadline, -21); // 29 noviembre
+    const infNovWarnStart = infNovOpen; // Solo avisar desde que abre el plazo (1 de diciembre)
     const infNovExpireWindow = addDaysIso(infNovDeadline, 120);
 
     if (todayIso >= infNovWarnStart && todayIso <= infNovExpireWindow) {
@@ -962,7 +962,7 @@ export const getPendingOfficialDeadlines = (
     // 3. INFOVI Julio (Presentar del 1 al 20 de agosto del año Y+1)
     const infJulOpen = `${y + 1}-08-01`;
     const infJulDeadline = `${y + 1}-08-20`;
-    const infJulWarnStart = addDaysIso(infJulDeadline, -21); // 30 julio
+    const infJulWarnStart = infJulOpen; // Solo avisar desde que abre el plazo (1 de agosto)
     const infJulExpireWindow = addDaysIso(infJulDeadline, 120);
 
     if (todayIso >= infJulWarnStart && todayIso <= infJulExpireWindow) {
