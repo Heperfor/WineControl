@@ -378,15 +378,19 @@ const getChangedRecordIds = <T extends { id: string }>(prevArr: T[], nextArr: T[
   return changed;
 };
 
+const generateShortUidSuffix = (): string =>
+  Math.random().toString(36).slice(2, 5).toUpperCase().padEnd(3, 'X');
+
 const getNextSeqId = (items: Array<{ id: string }>, prefix: string, padLen = 3): string => {
   const maxSeq = items.reduce((max, item) => {
     if (item.id.startsWith(prefix)) {
-      const num = Number(item.id.slice(prefix.length));
+      const num = parseInt(item.id.slice(prefix.length), 10);
       return Number.isFinite(num) && num > max ? num : max;
     }
     return max;
   }, 0);
-  return `${prefix}${String(Math.max(items.length, maxSeq) + 1).padStart(padLen, '0')}`;
+  const seqStr = String(Math.max(items.length, maxSeq) + 1).padStart(padLen, '0');
+  return `${prefix}${seqStr}-${generateShortUidSuffix()}`;
 };
 
 const hasAnyMapEntries = (map: DirtyIdsMap): boolean =>
@@ -786,9 +790,9 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const dirtyIdsRef = useRef<DirtyIdsMap>(initialDirtyIds);
   const pendingDeletesRef = useRef<DirtyIdsMap>(initialPendingDeletes);
-  const isApplyingRemoteRef = useRef(false);
   const isSyncingRef = useRef(false);
   const pendingResyncRef = useRef(false);
+  const hasStartedInitialSyncRef = useRef(false);
   const prevSnapshotRef = useRef<SerializedSnapshot | null>(null);
   const currentStateRef = useRef<WineryDatabaseState | null>(null);
 
@@ -803,6 +807,7 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(() =>
     localStorage.getItem(`${STORAGE_KEY}_last_sync`)
   );
+  const lastSyncAtRef = useRef<string | null>(localStorage.getItem(`${STORAGE_KEY}_last_sync`));
   const [syncError, setSyncError] = useState<string | null>(null);
 
   const persistDirtyQueues = useCallback(() => {
@@ -880,8 +885,33 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           : prevLocal?.infoviDeclaraciones ?? [],
       };
 
-      isApplyingRemoteRef.current = true;
-      prevSnapshotRef.current = buildSerializedSnapshot(appliedState);
+      const nextRemoteSnap = buildSerializedSnapshot(appliedState);
+      const prevSnap = prevSnapshotRef.current;
+
+      const snapshotsEqual = (a: SerializedSnapshot | null, b: SerializedSnapshot): boolean => {
+        if (!a) return false;
+        const aKeys = Object.keys(a.singletons);
+        const bKeys = Object.keys(b.singletons);
+        if (aKeys.length !== bKeys.length) return false;
+        for (const k of bKeys) {
+          if (a.singletons[k] !== b.singletons[k]) return false;
+        }
+        for (const table of Object.keys(b.arrays) as SyncTableName[]) {
+          const mapA = a.arrays[table];
+          const mapB = b.arrays[table];
+          if (!mapA || !mapB || mapA.size !== mapB.size) return false;
+          for (const [id, val] of mapB.entries()) {
+            if (mapA.get(id) !== val) return false;
+          }
+        }
+        return true;
+      };
+
+      if (snapshotsEqual(prevSnap, nextRemoteSnap)) {
+        return;
+      }
+
+      prevSnapshotRef.current = nextRemoteSnap;
       currentStateRef.current = appliedState;
 
       setBodegaConfig(remote.bodegaConfig);
@@ -921,6 +951,68 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     },
     []
+  );
+
+  const hasOperationalRecords = (s: WineryDatabaseState): boolean =>
+    s.parcelas.length > 0 ||
+    s.entradasUva.length > 0 ||
+    s.elaboraciones.length > 0 ||
+    s.embotellados.length > 0 ||
+    s.salidas.length > 0 ||
+    s.insumosMovimientos.length > 0 ||
+    s.analiticas.length > 0 ||
+    s.appccAgua.length > 0 ||
+    s.appccLimpieza.length > 0 ||
+    s.appccResiduos.length > 0 ||
+    s.appccPlagasMant.length > 0 ||
+    s.appccProveedores.length > 0 ||
+    s.appccIncidencias.length > 0 ||
+    s.aeatMateriasPrimas.length > 0 ||
+    s.aeatProductoElaborado.length > 0 ||
+    s.mrL1Entradas.length > 0 ||
+    s.mrL1Salidas.length > 0 ||
+    s.mrL2Entradas.length > 0 ||
+    s.mrL2Salidas.length > 0 ||
+    s.mrL3Movimientos.length > 0 ||
+    s.mrL4Practicas.length > 0 ||
+    s.mrL5Procesos.length > 0;
+
+  const queueExistingOperationalRecordsForSync = useCallback(
+    (s: WineryDatabaseState) => {
+      const addAll = (table: SyncTableName, ids: string[]) => {
+        if (ids.length === 0) return;
+        const curr = new Set(dirtyIdsRef.current[table] || []);
+        ids.forEach((id) => curr.add(id));
+        dirtyIdsRef.current[table] = Array.from(curr);
+      };
+
+      addAll('parcelas', s.parcelas.map((x) => x.id));
+      addAll('depositos', s.depositos.map((x) => x.id));
+      addAll('entradas_uva', s.entradasUva.map((x) => x.id));
+      addAll('elaboraciones', s.elaboraciones.map((x) => x.id));
+      addAll('embotellados', s.embotellados.map((x) => x.id));
+      addAll('salidas', s.salidas.map((x) => x.id));
+      addAll('insumos_movimientos', s.insumosMovimientos.map((x) => x.id));
+      addAll('analiticas', s.analiticas.map((x) => x.id));
+      addAll('appcc_agua', s.appccAgua.map((x) => x.id));
+      addAll('appcc_limpieza', s.appccLimpieza.map((x) => x.id));
+      addAll('appcc_residuos', s.appccResiduos.map((x) => x.id));
+      addAll('appcc_plagas_mantenimiento', s.appccPlagasMant.map((x) => x.id));
+      addAll('appcc_proveedores', s.appccProveedores.map((x) => x.id));
+      addAll('appcc_incidencias', s.appccIncidencias.map((x) => x.id));
+      addAll('aeat_materias_primas', s.aeatMateriasPrimas.map((x) => x.id));
+      addAll('aeat_producto_elaborado', s.aeatProductoElaborado.map((x) => x.id));
+      addAll('mr_l1_entradas', s.mrL1Entradas.map((x) => x.id));
+      addAll('mr_l1_salidas', s.mrL1Salidas.map((x) => x.id));
+      addAll('mr_l2_entradas', s.mrL2Entradas.map((x) => x.id));
+      addAll('mr_l2_salidas', s.mrL2Salidas.map((x) => x.id));
+      addAll('mr_l3_movimientos', s.mrL3Movimientos.map((x) => x.id));
+      addAll('mr_l4_practicas', s.mrL4Practicas.map((x) => x.id));
+      addAll('mr_l5_procesos', s.mrL5Procesos.map((x) => x.id));
+      addAll('bodega_config', ['default']);
+      persistDirtyQueues();
+    },
+    [persistDirtyQueues]
   );
 
   const syncWithCloud = useCallback(
@@ -1002,16 +1094,30 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return false;
         }
 
+        // First-sync protection: never overwrite existing unsynced offline records if remote DB is empty
+        const localLive = currentStateRef.current;
+        if (
+          !lastSyncAtRef.current &&
+          localLive &&
+          pullRes.state &&
+          hasOperationalRecords(localLive) &&
+          !hasOperationalRecords(pullRes.state)
+        ) {
+          queueExistingOperationalRecordsForSync(localLive);
+          pendingResyncRef.current = true;
+          setSyncStatus('pending');
+          return true;
+        }
+
         const stillDirty =
           hasAnyMapEntries(dirtyIdsRef.current) || hasAnyMapEntries(pendingDeletesRef.current);
 
         if (pullRes.state && !stillDirty) {
           applyRemoteState(pullRes.state, pullRes.missingOptionalTables);
-        } else if (stillDirty) {
-          pendingResyncRef.current = true;
         }
 
         const nowIso = new Date().toISOString();
+        lastSyncAtRef.current = nowIso;
         setLastSyncAt(nowIso);
         localStorage.setItem(`${STORAGE_KEY}_last_sync`, nowIso);
         setSyncError(null);
@@ -1027,7 +1133,7 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
     },
-    [applyRemoteState, persistDirtyQueues]
+    [applyRemoteState, persistDirtyQueues, queueExistingOperationalRecordsForSync]
   );
 
   // Persist to localStorage & track per-record dirty diffs for Supabase sync
@@ -1102,14 +1208,11 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const nextSnap = buildSerializedSnapshot(stateObj);
 
-    if (isApplyingRemoteRef.current) {
-      prevSnapshotRef.current = nextSnap;
-      isApplyingRemoteRef.current = false;
-      return;
-    }
-
     if (!prevSnapshotRef.current) {
       prevSnapshotRef.current = nextSnap;
+      if (!lastSyncAtRef.current && hasOperationalRecords(stateObj)) {
+        queueExistingOperationalRecordsForSync(stateObj);
+      }
       return;
     }
 
@@ -1215,62 +1318,27 @@ export const WineryProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     persistDirtyQueues,
   ]);
 
-  // Debounced automatic push to Supabase whenever local changes are pending and online
+  // Debounced automatic push to Supabase after 3 minutes without new local changes
   useEffect(() => {
     if (!hasPendingSync || !isSupabaseConfigured) return;
     if (typeof navigator !== 'undefined' && !navigator.onLine) return;
 
     const timer = setTimeout(() => {
       void syncWithCloud(false);
-    }, 1200);
+    }, 3 * 60 * 1000);
 
     return () => clearTimeout(timer);
   }, [hasPendingSync, syncWithCloud, bodegaConfig, parcelas, depositos, entradasUva, elaboraciones, embotellados, salidas, insumosMovimientos, analiticas, appccAgua, appccLimpieza, appccResiduos, appccPlagasMant, appccProveedores, appccIncidencias, aeatSumaAnterior, aeatMateriasPrimas, aeatProductoElaborado, mrL1SumaEntradas, mrL1SumaSalidas, mrL1Entradas, mrL1Salidas, mrL2SumaAnterior, mrL2Entradas, mrL2Salidas, mrL3SumaAnterior, mrL3Movimientos, mrL4Practicas, mrL5Procesos, foggaDeclaraciones, infoviDeclaraciones]);
 
-  // Initial cloud sync + online/focus listeners + Supabase Realtime listener across Web & Android
+  // Initial cloud sync only once when starting the app (manual sync + 3-minute inactivity handle the rest)
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
-    const sb = supabase;
+    if (hasStartedInitialSyncRef.current) return;
+    hasStartedInitialSyncRef.current = true;
 
     if (typeof navigator === 'undefined' || navigator.onLine) {
       void syncWithCloud(false);
     }
-
-    const handleReconnectOrFocus = () => {
-      if (typeof navigator !== 'undefined' && !navigator.onLine) return;
-      void syncWithCloud(false);
-    };
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        handleReconnectOrFocus();
-      }
-    };
-
-    window.addEventListener('online', handleReconnectOrFocus);
-    window.addEventListener('focus', handleReconnectOrFocus);
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    let realtimeTimer: ReturnType<typeof setTimeout> | null = null;
-    const channel = sb
-      .channel('winery_realtime_sync')
-      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
-        if (realtimeTimer) clearTimeout(realtimeTimer);
-        realtimeTimer = setTimeout(() => {
-          if (!isSyncingRef.current) {
-            void syncWithCloud(false);
-          }
-        }, 700);
-      })
-      .subscribe();
-
-    return () => {
-      window.removeEventListener('online', handleReconnectOrFocus);
-      window.removeEventListener('focus', handleReconnectOrFocus);
-      document.removeEventListener('visibilitychange', handleVisibility);
-      if (realtimeTimer) clearTimeout(realtimeTimer);
-      void sb.removeChannel(channel);
-    };
   }, [syncWithCloud]);
 
   // Dynamic stock calculation for packaging supplies (Insumos)
