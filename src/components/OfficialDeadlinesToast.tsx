@@ -73,7 +73,7 @@ export const OfficialDeadlinesToast: React.FC<OfficialDeadlinesToastProps> = ({
               Plazos de Declaraciones Oficiales
             </h3>
             <p className="text-[11px] text-stone-400 truncate">
-              Aviso activo desde 3 semanas antes hasta confirmar presentación
+              Aviso activo hasta confirmar presentación
             </p>
           </div>
         </div>
@@ -97,10 +97,10 @@ export const OfficialDeadlinesToast: React.FC<OfficialDeadlinesToastProps> = ({
 
           const statusText =
             alert.diasRestantes < 0
-              ? `Vencida hace ${Math.abs(alert.diasRestantes)} días (${formatFechaEs(alert.fechaVencimiento)})`
+              ? `Plazo vencido hace ${Math.abs(alert.diasRestantes)} ${Math.abs(alert.diasRestantes) === 1 ? 'día' : 'días'} (${formatFechaEs(alert.fechaVencimiento)})`
               : alert.diasRestantes === 0
-              ? `Vence HOY (${formatFechaEs(alert.fechaVencimiento)})`
-              : `Vence en ${alert.diasRestantes} días · ${formatFechaEs(alert.fechaVencimiento)}`;
+              ? `Último día · Vence HOY (${formatFechaEs(alert.fechaVencimiento)})`
+              : `${alert.diasRestantes === 1 ? 'Queda 1 día' : `Quedan ${alert.diasRestantes} días`} para presentarla · Cierra el ${formatFechaEs(alert.fechaVencimiento)}`;
 
           return (
             <div

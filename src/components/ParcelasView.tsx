@@ -55,7 +55,6 @@ export const ParcelasView: React.FC<ParcelasViewProps> = ({
     altitudM: number;
     tipoSuelo: string;
     anoPlantacion: number;
-    rendimientoMaxKg?: number;
     observaciones?: string;
     variedadesPlantadas: VariedadPlantada[];
   }>({
@@ -67,7 +66,6 @@ export const ParcelasView: React.FC<ParcelasViewProps> = ({
     altitudM: 50,
     tipoSuelo: 'Areno-granítico',
     anoPlantacion: 1995,
-    rendimientoMaxKg: 5000,
     observaciones: '',
     variedadesPlantadas: [{ variedad: VARIEDADES_PREDEFINIDAS[0], porcentajeEstimado: 100, cepasAprox: 1500 }],
   });
@@ -83,7 +81,6 @@ export const ParcelasView: React.FC<ParcelasViewProps> = ({
       altitudM: 50,
       tipoSuelo: 'Areno-granítico',
       anoPlantacion: 1995,
-      rendimientoMaxKg: 5000,
       observaciones: '',
       variedadesPlantadas: [{ variedad: VARIEDADES_PREDEFINIDAS[0], porcentajeEstimado: 100, cepasAprox: 1500 }],
     });
@@ -104,7 +101,6 @@ export const ParcelasView: React.FC<ParcelasViewProps> = ({
       altitudM: p.altitudM,
       tipoSuelo: p.tipoSuelo,
       anoPlantacion: p.anoPlantacion,
-      rendimientoMaxKg: p.rendimientoMaxKg,
       observaciones: p.observaciones || '',
       variedadesPlantadas: p.variedadesPlantadas.length > 0
         ? p.variedadesPlantadas.map((v) => ({
@@ -360,12 +356,6 @@ export const ParcelasView: React.FC<ParcelasViewProps> = ({
                     <span className="text-stone-400">Año de Plantación:</span>
                     <span className="font-medium text-stone-800">{parcela.anoPlantacion} ({new Date().getFullYear() - parcela.anoPlantacion} años)</span>
                   </div>
-                  {parcela.rendimientoMaxKg && (
-                    <div className="flex justify-between">
-                      <span className="text-stone-400">Rendimiento Máx:</span>
-                      <span className="font-medium text-stone-800">{parcela.rendimientoMaxKg.toLocaleString('es-ES')} kg</span>
-                    </div>
-                  )}
                 </div>
 
                 {/* Variedades Plantadas list */}

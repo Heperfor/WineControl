@@ -73,6 +73,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [tempConfig, setTempConfig] = useState<BodegaConfig>(bodegaConfig);
   const [statusMessage, setStatusMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [dismissedErrorText, setDismissedErrorText] = useState<string | null>(null);
 
   const handleOpenConfig = () => {
     setTempConfig(bodegaConfig);
@@ -100,12 +101,23 @@ export const Navbar: React.FC<NavbarProps> = ({
     setStatusMessage({ type: 'ok', text: 'Copia de seguridad JSON descargada.' });
   };
 
-  const handleManualSync = async () => {
-    const ok = await syncWithCloud(false);
+  const handleManualSync = async (forceAll = false) => {
+    if (!isSupabaseReady) {
+      handleOpenConfig();
+      setStatusMessage({
+        type: 'err',
+        text: 'Esta versión de la app no tiene configuradas VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY. Revisa las variables al compilar la app móvil o web.',
+      });
+      return;
+    }
+    setDismissedErrorText(null);
+    const ok = await syncWithCloud(forceAll);
     if (ok) {
       setStatusMessage({
         type: 'ok',
-        text: 'Datos sincronizados correctamente entre todos los dispositivos.',
+        text: forceAll
+          ? 'Todos los datos locales se han subido y sincronizado con Supabase.'
+          : 'Datos sincronizados correctamente entre todos los dispositivos.',
       });
     } else {
       setStatusMessage({
@@ -221,7 +233,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               {/* Sincronizar button: compact icon on mobile so it never crowds header title */}
               <button
                 type="button"
-                onClick={handleManualSync}
+                onClick={() => void handleManualSync(false)}
                 disabled={isSyncing}
                 title={syncTooltip}
                 aria-label={syncLabel}
@@ -298,6 +310,40 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           </div>
         </div>
+        {isSupabaseReady && syncStatus === 'error' && syncError && dismissedErrorText !== syncError && (
+          <div className="bg-amber-950/95 border-t border-amber-700/60 px-3 py-1.5 text-[11px] text-amber-100">
+            <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                <span className="truncate">{syncError}</span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => void handleManualSync(false)}
+                  className="px-2 py-0.5 rounded-md bg-amber-400 text-stone-950 font-semibold hover:bg-amber-300 cursor-pointer"
+                >
+                  Reintentar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenConfig}
+                  className="px-2 py-0.5 rounded-md bg-stone-800 text-amber-200 hover:bg-stone-700 cursor-pointer"
+                >
+                  Opciones
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDismissedErrorText(syncError)}
+                  aria-label="Ocultar aviso de sincronización"
+                  className="p-0.5 text-amber-300/80 hover:text-white cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Bodega Configuration & Cloud Sync Bottom Sheet / Modal */}
@@ -437,6 +483,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </span>
                 </div>
 
+                {!isSupabaseReady && (
+                  <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl p-2.5">
+                    Faltan las variables <strong>VITE_SUPABASE_URL</strong> y <strong>VITE_SUPABASE_ANON_KEY</strong> al compilar esta versión. Añádelas en tu archivo <code>.env</code> antes de generar la app móvil (APK) o web.
+                  </p>
+                )}
+
                 {lastSyncAt && (
                   <p className="text-[11px] text-stone-500 tabular-nums">
                     Última sincronización: {new Date(lastSyncAt).toLocaleString('es-ES')}
@@ -452,7 +504,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <button
                     type="button"
-                    onClick={handleManualSync}
+                    onClick={() => void handleManualSync(false)}
                     disabled={isSyncing}
                     className={`min-h-[44px] flex items-center justify-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold cursor-pointer transition-colors ${syncButtonClasses}`}
                   >
@@ -469,6 +521,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <span>Descargar CS</span>
                   </button>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => void handleManualSync(true)}
+                  disabled={isSyncing || !isSupabaseReady}
+                  className="w-full min-h-[40px] flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-stone-200 hover:bg-stone-300 disabled:opacity-50 text-stone-800 text-xs font-semibold cursor-pointer transition-colors"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span>Subir todo a la nube (Forzar respaldo completo)</span>
+                </button>
               </div>
 
               <div className="pt-3 border-t border-stone-200 flex justify-end gap-3">
